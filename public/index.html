@@ -27,6 +27,8 @@
     .resize-handle-x:hover, .resize-handle-x.active { background: oklch(70% 0.1 250); }
     .resize-handle-y { height: 4px; cursor: row-resize; transition: background 0.15s; flex-shrink: 0; }
     .resize-handle-y:hover, .resize-handle-y.active { background: oklch(70% 0.1 250); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .css-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; opacity: 0.6; }
   </style>
 </head>
 <body class="bg-base-100 text-base-content">

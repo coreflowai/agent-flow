@@ -224,7 +224,7 @@ function renderSessionList() {
     const icon = s.source === 'claude-code' ? ICON_CLAUDE : ICON_OPENAI
     const isWaitingForUser = s.status === 'active' && (s.lastEventType === 'message.assistant' || s.lastEventType === 'session.start')
     const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
-      : s.status === 'active' && !isWaitingForUser ? '<span class="loading loading-spinner loading-xs"></span>'
+      : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
       : ''
     const time = timeAgo(s.lastEventTime)
     const dur = s.lastEventTime - s.startTime
@@ -367,7 +367,7 @@ function appendDisplayRow(row, ri) {
       <td class="py-1 pr-3">
         <div class="flex items-center gap-1.5">
           <span class="text-warning text-xs font-semibold">${esc(e.toolName || '?')}</span>
-          <span class="loading loading-spinner loading-xs opacity-30"></span>
+          <span class="css-spinner" style="opacity:0.3"></span>
         </div>
         ${renderValuePreview(e.toolInput, 'opacity-50')}
       </td>
