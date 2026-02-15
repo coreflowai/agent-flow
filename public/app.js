@@ -32,12 +32,16 @@ const detailHandle = document.getElementById('detail-handle')
 const userFilter = document.getElementById('user-filter')
 const bubbleView = document.getElementById('bubble-view')
 const listView = document.getElementById('list-view')
-const bubbleContainer = document.getElementById('bubble-container')
+const cookingContainer = document.getElementById('cooking-container')
+const waitingContainer = document.getElementById('waiting-container')
+const sectionCooking = document.getElementById('section-cooking')
+const sectionWaiting = document.getElementById('section-waiting')
+const cookingCount = document.getElementById('cooking-count')
+const waitingCount = document.getElementById('waiting-count')
 const bubbleEmpty = document.getElementById('bubble-empty')
 const bubbleCount = document.getElementById('bubble-count')
 const bubbleUserFilter = document.getElementById('bubble-user-filter')
-const btnViewBubbles = document.getElementById('btn-view-bubbles')
-const btnViewList = document.getElementById('btn-view-list')
+const btnTitle = document.getElementById('btn-title')
 
 // --- View switching ---
 function switchView(view) {
@@ -45,19 +49,14 @@ function switchView(view) {
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
     listView.classList.add('hidden')
-    btnViewBubbles.classList.add('btn-active')
-    btnViewList.classList.remove('btn-active')
     renderBubbles()
   } else {
     bubbleView.classList.add('hidden')
     listView.classList.remove('hidden')
-    btnViewBubbles.classList.remove('btn-active')
-    btnViewList.classList.add('btn-active')
   }
 }
 
-btnViewBubbles.addEventListener('click', () => switchView('bubbles'))
-btnViewList.addEventListener('click', () => switchView('list'))
+btnTitle.addEventListener('click', () => switchView('bubbles'))
 
 // --- User filter ---
 userFilter.addEventListener('change', () => {
@@ -663,6 +662,17 @@ function renderDetailFields(fields) {
 // --- Detail close button ---
 detailClose.addEventListener('click', closeDetail)
 
+// --- Sign out ---
+const btnSignout = document.getElementById('btn-signout')
+if (btnSignout) {
+  btnSignout.addEventListener('click', async () => {
+    try {
+      await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'include' })
+    } catch {}
+    window.location.href = '/login.html'
+  })
+}
+
 // --- Help dialog ---
 const helpDialog = document.getElementById('help-dialog')
 const btnHelp = document.getElementById('btn-help')
@@ -683,16 +693,59 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
-function populateHelpDialog() {
+// --- API Key management for setup snippets ---
+async function getOrCreateApiKey() {
+  // Check sessionStorage first
+  const stored = sessionStorage.getItem('agentflow_api_key')
+  if (stored) return stored
+
+  try {
+    // Try listing existing keys
+    const listRes = await fetch('/api/auth/api-key/list', { credentials: 'include' })
+    if (listRes.ok) {
+      const keys = await listRes.json()
+      if (keys.length > 0) {
+        // Return the prefix + start chars (key is hashed, only partial visible)
+        const k = keys[0]
+        return (k.prefix || '') + (k.start || '***')
+      }
+    }
+  } catch {}
+
+  try {
+    // Create a new key
+    const createRes = await fetch('/api/auth/api-key/create', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'default', expiresIn: null }),
+    })
+    if (createRes.ok) {
+      const data = await createRes.json()
+      if (data.key) {
+        sessionStorage.setItem('agentflow_api_key', data.key)
+        return data.key
+      }
+    }
+  } catch {}
+
+  return '<YOUR_API_KEY>'
+}
+
+async function populateHelpDialog() {
   const host = location.origin
+  const apiKey = await getOrCreateApiKey()
 
   document.getElementById('claude-config').textContent =
 `# 1. Download the hook script
 mkdir -p ~/.claude/hooks
-curl -o ~/.claude/hooks/agent-flow.sh https://agent.coreflow.sh/setup/hook.sh
+curl -o ~/.claude/hooks/agent-flow.sh ${host}/setup/hook.sh
 chmod +x ~/.claude/hooks/agent-flow.sh
 
-# 2. Add to ~/.claude/settings.json (global)
+# 2. Set your API key
+export AGENT_FLOW_API_KEY="${apiKey}"
+
+# 3. Add to ~/.claude/settings.json (global)
 cat <<'EOF' > ~/.claude/settings.json
 {
   "hooks": {
@@ -711,6 +764,7 @@ codex exec --json "your prompt" | while IFS= read -r line; do
   echo "$line"
   curl -s -X POST ${host}/api/ingest \\
     -H "Content-Type: application/json" \\
+    -H "x-api-key: ${apiKey}" \\
     -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$line" \\
       '{source:"codex",sessionId:$s,event:$e}')" &
 done`
@@ -719,11 +773,12 @@ done`
 `import { query } from "@anthropic-ai/claude-agent-sdk";
 
 const URL = "${host}/api/ingest";
+const API_KEY = "${apiKey}";
 
 function hook(input) {
   fetch(URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
     body: JSON.stringify({ source: "claude-code", sessionId: input.session_id, event: input }),
   }).catch(() => {});
   return {};
@@ -747,9 +802,11 @@ for await (const msg of query({
 import httpx
 
 URL = "${host}/api/ingest"
+API_KEY = "${apiKey}"
 
 def hook(event):
-    httpx.post(URL, json={"source": "claude-code", "sessionId": event.get("session_id"), "event": event})
+    httpx.post(URL, json={"source": "claude-code", "sessionId": event.get("session_id"), "event": event},
+               headers={"x-api-key": API_KEY})
     return {}
 
 for msg in query(
@@ -765,6 +822,7 @@ for msg in query(
   document.getElementById('curl-config').textContent =
 `curl -X POST ${host}/api/ingest \\
   -H 'Content-Type: application/json' \\
+  -H 'x-api-key: ${apiKey}' \\
   -d '{"source":"claude-code","sessionId":"test-1","event":{"hook_event_name":"PreToolUse","session_id":"test-1","tool_name":"Bash","tool_input":{"command":"echo hello"}}}'`
 }
 
@@ -856,15 +914,26 @@ function getActiveSessions() {
   return src.filter(s => s.status === 'active')
 }
 
+function isBubbleWaiting(session) {
+  return session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start'
+}
+
 function renderBubbles() {
   const active = getActiveSessions()
+  const cooking = active.filter(s => !isBubbleWaiting(s))
+  const waiting = active.filter(s => isBubbleWaiting(s))
+
   bubbleCount.textContent = active.length
   bubbleEmpty.classList.toggle('hidden', active.length > 0)
+  sectionCooking.classList.toggle('hidden', cooking.length === 0)
+  sectionWaiting.classList.toggle('hidden', waiting.length === 0)
+  cookingCount.textContent = cooking.length
+  waitingCount.textContent = waiting.length
 
   const activeIds = new Set(active.map(s => s.id))
 
-  // Exit bubbles for sessions no longer active
-  bubbleContainer.querySelectorAll('.agent-bubble').forEach(el => {
+  // Exit bubbles for sessions no longer active (from both containers)
+  document.querySelectorAll('#bubble-scroll .agent-bubble').forEach(el => {
     if (!activeIds.has(el.dataset.sid)) {
       el.classList.add('exiting')
       el.addEventListener('transitionend', () => el.remove(), { once: true })
@@ -872,21 +941,35 @@ function renderBubbles() {
     }
   })
 
+  // Place each active session in the correct container
   active.forEach(s => {
-    let el = bubbleContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
+    const targetContainer = isBubbleWaiting(s) ? waitingContainer : cookingContainer
+    const otherContainer = isBubbleWaiting(s) ? cookingContainer : waitingContainer
+    const category = isBubbleWaiting(s) ? 'waiting' : 'cooking'
+
+    // Find existing bubble in either container
+    let el = targetContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
+      || otherContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
+
     if (el) {
+      // Move to correct container if needed
+      if (el.parentNode !== targetContainer) {
+        el.classList.remove('cooking', 'waiting')
+        el.classList.add(category)
+        targetContainer.appendChild(el)
+      }
       updateBubbleContent(el, s)
     } else {
-      el = createBubbleElement(s)
-      bubbleContainer.appendChild(el)
+      el = createBubbleElement(s, category)
+      targetContainer.appendChild(el)
       requestAnimationFrame(() => el.classList.add('visible'))
     }
   })
 }
 
-function createBubbleElement(session) {
+function createBubbleElement(session, category) {
   const el = document.createElement('div')
-  el.className = 'agent-bubble bg-base-100'
+  el.className = `agent-bubble bg-base-100 ${category}`
   el.dataset.sid = session.id
   el.dataset.eventCount = session.eventCount || 0
   el.addEventListener('click', () => bubbleSelectSession(session.id))
@@ -900,23 +983,30 @@ function updateBubbleContent(el, session) {
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
   const title = userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
-  const isWaitingForUser = session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start'
-  const spinner = !isWaitingForUser ? '<span class="css-spinner ml-1"></span>' : ''
+  const waiting = isBubbleWaiting(session)
+  const spinner = !waiting ? '<span class="css-spinner ml-1"></span>' : ''
 
   const lastLabel = formatSessionLastEvent(session.lastEventType)
-  const lastText = session.lastEventText ? esc(truncate(session.lastEventText, 30)) : ''
+  const lastText = session.lastEventText ? esc(truncate(session.lastEventText, 50)) : ''
 
   const dur = (session.lastEventTime || Date.now()) - session.startTime
   const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
 
+  // Show assistant message for waiting bubbles, activity preview for cooking
+  const previewLine = waiting && lastText
+    ? `<div class="text-[10px] opacity-60 mt-1 line-clamp-2 leading-snug">${lastText}</div>`
+    : lastText
+      ? `<div class="text-[10px] opacity-40 truncate">${lastLabel} · ${lastText}</div>`
+      : `<div class="text-[10px] opacity-40 truncate">${lastLabel}</div>`
+
   el.innerHTML = `
-    <div class="flex items-center gap-1.5 mb-1.5">
+    <div class="flex items-center gap-1.5 mb-1">
       <span class="opacity-60 flex-shrink-0">${icon}</span>
       <span class="text-xs font-medium truncate">${esc(title)}</span>
       ${spinner}
     </div>
-    <div class="text-[10px] opacity-50 truncate mb-1">${lastLabel}${lastText ? ' · ' + lastText : ''}</div>
-    <div class="flex items-center justify-between">
+    ${previewLine}
+    <div class="flex items-center justify-between mt-1.5">
       <span class="text-[10px] opacity-30">${durStr}</span>
       <span class="badge badge-xs badge-ghost text-[9px]">${session.eventCount} events</span>
     </div>

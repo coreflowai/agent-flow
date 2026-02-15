@@ -32,17 +32,22 @@
 
     /* Bubble view */
     .agent-bubble {
-      width: 200px; border-radius: 12px; border: 1px solid oklch(85% 0 0);
-      padding: 12px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, opacity 0.4s;
-      animation: bubble-float 3s ease-in-out infinite;
+      width: 220px; border-radius: 12px; border: 1px solid oklch(85% 0 0);
+      padding: 12px; cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.4s;
       opacity: 0; transform: scale(0.85);
     }
     .agent-bubble.visible { opacity: 1; transform: scale(1); }
     .agent-bubble.exiting { opacity: 0; transform: scale(0.85); pointer-events: none; }
     .agent-bubble:hover { transform: scale(1.04); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.1); }
+    /* Cooking bubbles float actively */
+    .agent-bubble.cooking { animation: bubble-float 3s ease-in-out infinite; }
+    .agent-bubble.cooking.visible { animation: bubble-float 3s ease-in-out infinite; }
+    /* Waiting bubbles are still */
+    .agent-bubble.waiting { animation: none; }
     @keyframes bubble-float {
       0%, 100% { translate: 0 0; }
-      50% { translate: 0 -3px; }
+      50% { translate: 0 -4px; }
     }
     @keyframes bubble-pulse {
       0% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0.4); }
@@ -50,6 +55,9 @@
       100% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0); }
     }
     .agent-bubble.pulse { animation: bubble-pulse 0.6s ease-out, bubble-float 3s ease-in-out infinite; }
+    .bubble-section-empty { display: none; }
+    .bubble-section:has(.agent-bubble:not(.exiting)) .bubble-section-empty { display: none; }
+    .bubble-category { min-height: 48px; }
 
     /* Mobile responsive */
     @media (max-width: 767px) {
@@ -60,7 +68,7 @@
       #mobile-back { display: flex !important; }
       .resize-handle-y { display: none !important; }
       #detail-panel { max-height: 50vh !important; }
-      .agent-bubble { width: 160px; padding: 10px; }
+      .agent-bubble { width: 170px; padding: 10px; }
     }
   </style>
 </head>
@@ -69,16 +77,13 @@
   <!-- Navbar -->
   <div class="navbar bg-base-300 shadow-sm px-4 min-h-10 h-10">
     <div class="flex-1">
-      <span class="text-sm font-bold tracking-tight">AgentFlow</span>
+      <span id="btn-title" class="text-sm font-bold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Back to overview (v)">AgentFlow</span>
       <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
     </div>
     <div class="flex-none gap-2">
-      <div class="join">
-        <button id="btn-view-bubbles" class="btn btn-xs join-item btn-active" title="Bubble view (v)">bubbles</button>
-        <button id="btn-view-list" class="btn btn-xs join-item" title="List view (v)">list</button>
-      </div>
       <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
+      <button id="btn-signout" class="btn btn-xs btn-ghost text-error" title="Sign out">sign out</button>
     </div>
   </div>
 
@@ -93,12 +98,30 @@
         <option value="">All users</option>
       </select>
     </div>
-    <div id="bubble-container" class="flex-1 flex flex-wrap items-start justify-center gap-4 p-6 overflow-y-auto content-start">
-      <div id="bubble-empty" class="flex items-center justify-center w-full h-full">
+    <div id="bubble-scroll" class="flex-1 overflow-y-auto p-6 space-y-6">
+      <div id="bubble-empty" class="flex items-center justify-center h-full">
         <div class="text-center opacity-40">
           <p class="text-sm mb-1">No active sessions</p>
           <p class="text-[10px]">Bubbles appear here when agents are running</p>
         </div>
+      </div>
+      <!-- Cooking section -->
+      <div id="section-cooking" class="bubble-section hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="css-spinner"></span>
+          <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Cooking</span>
+          <span id="cooking-count" class="badge badge-xs badge-ghost text-[9px]">0</span>
+        </div>
+        <div id="cooking-container" class="bubble-category flex flex-wrap gap-4"></div>
+      </div>
+      <!-- Waiting section -->
+      <div id="section-waiting" class="bubble-section hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-[10px] opacity-30">&#9679;</span>
+          <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Waiting for response</span>
+          <span id="waiting-count" class="badge badge-xs badge-ghost text-[9px]">0</span>
+        </div>
+        <div id="waiting-container" class="bubble-category flex flex-wrap gap-4"></div>
       </div>
     </div>
   </div>
