@@ -60,7 +60,9 @@ export function createServer(options: ServerOptions = {}) {
           try {
             const file = Bun.file(filePath)
             if (await file.exists()) {
-              return new Response(file)
+              return new Response(file, {
+                headers: { 'Cache-Control': 'no-cache' },
+              })
             }
           } catch {}
 
