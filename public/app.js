@@ -341,9 +341,10 @@ function navigateEvent(delta) {
 }
 
 function highlightSession() {
-  sessionList.querySelectorAll('.session-item').forEach((el, i) => {
-    el.classList.toggle('active', i === selectedSessionIdx)
-    if (i === selectedSessionIdx) el.scrollIntoView({ block: 'nearest' })
+  sessionList.querySelectorAll('.session-item').forEach(el => {
+    const idx = parseInt(el.dataset.idx)
+    el.classList.toggle('active', idx === selectedSessionIdx)
+    if (idx === selectedSessionIdx) el.scrollIntoView({ block: 'nearest' })
   })
 }
 
@@ -1184,9 +1185,6 @@ function updateBubbleContent(el, session) {
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
   const title = session.metadata?.title || userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
-  const git = session.metadata?.git
-  const gitLabel = git ? [git.repoName || git.workDir, git.branch].filter(Boolean).join(' / ') : ''
-
   const waiting = isBubbleWaiting(session)
   const spinner = !waiting ? '<span class="css-spinner ml-1"></span>' : ''
 
@@ -1210,7 +1208,6 @@ function updateBubbleContent(el, session) {
       <button class="archive-btn btn btn-xs btn-ghost px-1" data-bubble-archive="${session.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>
     </div>
     ${secondaryLine}
-    ${gitLabel ? `<div class="text-[10px] opacity-40 truncate">${esc(gitLabel)}</div>` : ''}
     <div class="flex items-center justify-between mt-1.5">
       <span class="text-[10px] opacity-30">${durStr}</span>
       <span class="badge badge-xs badge-ghost text-[9px]">${session.eventCount} events</span>
