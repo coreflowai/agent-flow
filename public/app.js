@@ -1029,7 +1029,10 @@ function createBubbleElement(session, category) {
   el.className = `agent-bubble bg-base-100 ${category}`
   el.dataset.sid = session.id
   el.dataset.eventCount = session.eventCount || 0
-  el.addEventListener('click', () => bubbleSelectSession(session.id))
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('[data-bubble-archive]')) return
+    bubbleSelectSession(session.id)
+  })
   updateBubbleContent(el, session)
   return el
 }
