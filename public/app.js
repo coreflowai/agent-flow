@@ -807,13 +807,13 @@ for msg in query(
     print(msg)`
 
   document.getElementById('opencode-config').textContent =
-`# Download the plugin (API key is baked in)
-mkdir -p .opencode/plugin
-curl -H "x-api-key: ${apiKey}" -o .opencode/plugin/agent-flow.ts ${host}/setup/opencode-plugin.ts
-
-# Or install globally:
+`# Download the plugin globally (API key is baked in)
 mkdir -p ~/.config/opencode/plugin
-curl -H "x-api-key: ${apiKey}" -o ~/.config/opencode/plugin/agent-flow.ts ${host}/setup/opencode-plugin.ts`
+curl -H "x-api-key: ${apiKey}" -o ~/.config/opencode/plugin/agent-flow.ts ${host}/setup/opencode-plugin.ts
+
+# Or install per-project:
+# mkdir -p .opencode/plugin
+# curl -H "x-api-key: ${apiKey}" -o .opencode/plugin/agent-flow.ts ${host}/setup/opencode-plugin.ts`
 
   document.getElementById('curl-config').textContent =
 `curl -X POST ${host}/api/ingest \\
