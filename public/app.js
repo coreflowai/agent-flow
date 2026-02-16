@@ -340,7 +340,7 @@ function renderSessionList() {
     const lastLabel = formatSessionLastEvent(s.lastEventType)
 
     const archiveBtn = s.status !== 'archived'
-      ? `<button class="archive-btn btn btn-xs btn-ghost text-[9px] px-1" data-archive="${s.id}" title="Archive session">archive</button>`
+      ? `<button class="archive-btn btn btn-xs btn-ghost px-1" data-archive="${s.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>`
       : ''
 
     return `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
@@ -1061,7 +1061,7 @@ function updateBubbleContent(el, session) {
       <span class="opacity-60 flex-shrink-0">${icon}</span>
       <span class="text-xs font-medium truncate flex-1">${esc(title)}</span>
       ${spinner}
-      <button class="archive-btn btn btn-xs btn-ghost text-[9px] px-1" data-bubble-archive="${session.id}" title="Archive session">archive</button>
+      <button class="archive-btn btn btn-xs btn-ghost px-1" data-bubble-archive="${session.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>
     </div>
     ${previewLine}
     <div class="flex items-center justify-between mt-1.5">
