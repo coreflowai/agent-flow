@@ -10,7 +10,7 @@ let selectedSessionIdx = -1
 let selectedEventIdx = -1
 let displayRows = []
 let focusArea = 'sessions' // 'sessions' | 'events'
-let currentView = 'bubbles' // 'bubbles' | 'list'
+let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // Source icons (Anthropic / OpenAI)
@@ -46,20 +46,41 @@ const bubbleCount = document.getElementById('bubble-count')
 const bubbleUserFilter = document.getElementById('bubble-user-filter')
 const btnTitle = document.getElementById('btn-title')
 
+// Insights state
+let insights = []
+let insightsLoaded = false
+
+// Insights DOM
+const insightsView = document.getElementById('insights-view')
+const insightsList = document.getElementById('insights-list')
+const insightsEmpty = document.getElementById('insights-empty')
+const insightsCount = document.getElementById('insights-count')
+const insightsUserFilter = document.getElementById('insights-user-filter')
+const insightsBack = document.getElementById('insights-back')
+const btnInsights = document.getElementById('btn-insights')
+
 // --- View switching ---
 function switchView(view) {
   currentView = view
+  bubbleView.classList.add('hidden')
+  listView.classList.add('hidden')
+  insightsView.classList.add('hidden')
+
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
-    listView.classList.add('hidden')
     renderBubbles()
-  } else {
-    bubbleView.classList.add('hidden')
+  } else if (view === 'list') {
     listView.classList.remove('hidden')
+  } else if (view === 'insights') {
+    insightsView.classList.remove('hidden')
+    if (!insightsLoaded) loadInsights()
+    else renderInsights()
   }
 }
 
 btnTitle.addEventListener('click', () => switchView('bubbles'))
+btnInsights.addEventListener('click', () => switchView('insights'))
+insightsBack.addEventListener('click', () => switchView('bubbles'))
 
 // --- User filter ---
 userFilter.addEventListener('change', () => {
@@ -219,6 +240,12 @@ document.addEventListener('keydown', (e) => {
     return
   }
 
+  if (e.key === 'i') {
+    e.preventDefault()
+    switchView(currentView === 'insights' ? 'bubbles' : 'insights')
+    return
+  }
+
   if (e.key === 'Escape') {
     e.preventDefault()
     if (currentView === 'list' && !detailPanel.classList.contains('hidden')) {
@@ -350,7 +377,7 @@ function renderSessionList() {
     // User identity from session metadata
     const user = s.metadata?.user
     const userName = user?.githubUsername || user?.name || user?.osUser || ''
-    const title = userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
+    const title = s.metadata?.title || userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
 
     // Git repo info
     const git = s.metadata?.git
@@ -992,6 +1019,29 @@ window.addEventListener('resize', () => {
   }
 })
 
+// --- Repo grouping ---
+function getRepoKey(s) {
+  const git = s.metadata?.git
+  return git?.repoName || git?.workDir || null
+}
+
+function groupByRepo(list) {
+  const groups = new Map()
+  for (const s of list) {
+    const key = getRepoKey(s)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(s)
+  }
+  // Sort: named repos alphabetically, null last
+  const sorted = [...groups.entries()].sort((a, b) => {
+    if (a[0] === null && b[0] !== null) return 1
+    if (a[0] !== null && b[0] === null) return -1
+    if (a[0] === null && b[0] === null) return 0
+    return a[0].localeCompare(b[0])
+  })
+  return sorted
+}
+
 // --- Bubble view ---
 function getActiveSessions() {
   const src = currentUserFilter
@@ -1070,7 +1120,7 @@ function updateBubbleContent(el, session) {
   const icon = session.source === 'claude-code' ? ICON_CLAUDE : session.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
   const user = session.metadata?.user
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
-  const title = userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
+  const title = session.metadata?.title || userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
   const git = session.metadata?.git
   const gitLabel = git ? [git.repoName || git.workDir, git.branch].filter(Boolean).join(' / ') : ''
@@ -1236,6 +1286,151 @@ async function loadInvites() {
     inviteList.innerHTML = '<div class="text-error text-xs">Failed to load invites</div>'
   }
 }
+
+// --- Insights ---
+async function loadInsights() {
+  try {
+    const params = new URLSearchParams()
+    if (currentUserFilter) params.set('userId', currentUserFilter)
+    const res = await fetch(`/api/insights?${params}`, { credentials: 'include' })
+    insights = await res.json()
+    insightsLoaded = true
+    updateInsightsUserFilter()
+    renderInsights()
+  } catch (err) {
+    console.error('Failed to load insights:', err)
+    insightsList.innerHTML = '<div class="text-error text-xs">Failed to load insights</div>'
+  }
+}
+
+function updateInsightsUserFilter() {
+  const users = [...new Set(insights.map(i => i.userId).filter(Boolean))].sort()
+  const prev = currentUserFilter
+  const options = '<option value="">All users</option>' +
+    users.map(u => `<option value="${esc(u)}"${u === prev ? ' selected' : ''}>${esc(u)}</option>`).join('')
+  insightsUserFilter.innerHTML = options
+}
+
+insightsUserFilter.addEventListener('change', () => {
+  currentUserFilter = insightsUserFilter.value
+  userFilter.value = currentUserFilter
+  bubbleUserFilter.value = currentUserFilter
+  loadInsights()
+})
+
+function renderInsights() {
+  const filtered = currentUserFilter
+    ? insights.filter(i => i.userId === currentUserFilter)
+    : insights
+
+  insightsCount.textContent = filtered.length
+  insightsEmpty.classList.toggle('hidden', filtered.length > 0)
+  insightsList.classList.toggle('hidden', filtered.length === 0)
+
+  if (filtered.length === 0) return
+
+  insightsList.innerHTML = filtered.map(insight => {
+    const time = timeAgo(insight.createdAt)
+    const repo = insight.repoName || 'All repositories'
+    const sessions = insight.sessionsAnalyzed || 0
+    const events = insight.eventsAnalyzed || 0
+
+    // Token usage from meta
+    const meta = insight.meta || {}
+    const tokens = meta.tokenUsage
+      ? `${meta.tokenUsage.inputTokens + meta.tokenUsage.outputTokens} tokens`
+      : ''
+    const duration = meta.durationMs ? `${(meta.durationMs / 1000).toFixed(1)}s` : ''
+    const model = meta.model || ''
+
+    // Categories badges
+    const categories = (insight.categories || []).map(c =>
+      `<span class="badge badge-xs badge-ghost text-[9px]">${esc(c)}</span>`
+    ).join('')
+
+    // Convert markdown content to HTML (basic)
+    const contentHtml = markdownToHtml(insight.content || '')
+
+    return `<div class="insight-card" data-id="${insight.id}">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-semibold">${esc(insight.userId)}</span>
+            <span class="text-[10px] opacity-40">${esc(repo)}</span>
+            ${categories}
+          </div>
+          <div class="text-[10px] opacity-40 mt-0.5">
+            ${time} · ${sessions} sessions · ${events} events
+            ${model ? ` · ${esc(model)}` : ''}
+            ${duration ? ` · ${duration}` : ''}
+            ${tokens ? ` · ${tokens}` : ''}
+          </div>
+        </div>
+        <button class="btn btn-xs btn-ghost opacity-40 hover:opacity-100 insight-delete-btn" data-id="${insight.id}" title="Delete insight">
+          <i data-lucide="trash-2" class="w-3 h-3"></i>
+        </button>
+      </div>
+      <div class="insight-content text-xs">${contentHtml}</div>
+    </div>`
+  }).join('')
+
+  // Re-init lucide icons for the new elements
+  lucide.createIcons()
+
+  // Delete button handlers
+  insightsList.querySelectorAll('.insight-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const id = btn.dataset.id
+      try {
+        await fetch(`/api/insights/${id}`, { method: 'DELETE', credentials: 'include' })
+        insights = insights.filter(i => i.id !== id)
+        renderInsights()
+      } catch (err) {
+        console.error('Failed to delete insight:', err)
+      }
+    })
+  })
+}
+
+// Basic markdown to HTML converter
+function markdownToHtml(md) {
+  if (!md) return ''
+  return md
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    // Horizontal rule
+    .replace(/^---$/gm, '<hr>')
+    // Paragraphs (lines that aren't already HTML)
+    .replace(/^([^<\n].+)$/gm, '<p>$1</p>')
+    // Clean up extra newlines
+    .replace(/\n{2,}/g, '\n')
+}
+
+// Socket.IO: Listen for new insights
+socket.on('insight:new', (insight) => {
+  // Add to front of list
+  insights.unshift(insight)
+  if (currentView === 'insights') {
+    renderInsights()
+  }
+})
+
+socket.on('insight:deleted', (id) => {
+  insights = insights.filter(i => i.id !== id)
+  if (currentView === 'insights') {
+    renderInsights()
+  }
+})
 
 // Init Lucide icons
 lucide.createIcons()

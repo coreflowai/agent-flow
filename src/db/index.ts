@@ -85,6 +85,19 @@ export function addEvent(event: AgentFlowEvent) {
       .run()
   }
 
+  // Auto-title from first user message
+  if (event.type === 'message.user' && event.text) {
+    const session = db.select({ metadata: sessions.metadata }).from(sessions).where(eq(sessions.id, event.sessionId)).get()
+    const meta = (session?.metadata ?? {}) as Record<string, unknown>
+    if (!meta.title) {
+      const title = event.text.length > 80 ? event.text.slice(0, 80) + '...' : event.text
+      db.update(sessions)
+        .set({ metadata: { ...meta, title } })
+        .where(eq(sessions.id, event.sessionId))
+        .run()
+    }
+  }
+
   // Insert event
   db.insert(events).values({
     id: event.id,
