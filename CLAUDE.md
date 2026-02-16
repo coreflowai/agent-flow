@@ -62,6 +62,7 @@ tests/
 | POST | `/api/ingest` | Receive events (`{ source, sessionId, event }`) |
 | GET | `/api/sessions` | List all sessions |
 | GET | `/api/sessions/:id` | Session detail + events |
+| POST | `/api/sessions/:id/archive` | Archive session |
 | DELETE | `/api/sessions/:id` | Delete session |
 | DELETE | `/api/sessions` | Clear all |
 | GET | `/setup/hook.sh` | Download hook script with correct server URL |
@@ -103,3 +104,9 @@ Tests use the server factory with ephemeral `/tmp` databases. Each test creates 
 | `PORT` | `3333` | Server port |
 | `AGENT_FLOW_DB` | `agent-flow.db` | SQLite database path |
 | `AGENT_FLOW_URL` | `http://localhost:3333` | Used by adapters to POST events |
+
+## Production
+
+- **URL**: https://agent.coreflow.sh
+- **API**: All `/api/*` routes require authentication via `x-api-key` header or session cookie
+- Query sessions: `curl -H "x-api-key: $KEY" https://agent.coreflow.sh/api/sessions`

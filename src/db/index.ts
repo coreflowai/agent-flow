@@ -77,8 +77,8 @@ export function addEvent(event: AgentFlowEvent) {
       .set({ status: 'error', lastEventTime: now })
       .where(eq(sessions.id, event.sessionId))
       .run()
-  } else if (existing && (existing.status === 'completed' || existing.status === 'archived')) {
-    // Reactivate if new events come in after completion or archival
+  } else if (existing && (existing.status === 'completed' || existing.status === 'archived') && !HIDDEN_EVENT_TYPES.includes(event.type)) {
+    // Reactivate if meaningful events come in after completion or archival
     db.update(sessions)
       .set({ status: 'active', lastEventTime: now })
       .where(eq(sessions.id, event.sessionId))
