@@ -11,6 +11,7 @@
     "db:studio": "bunx drizzle-kit studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "@socket.io/bun-engine": "^0.1.0",
     "better-auth": "^1.4.18",
     "croner": "^10.0.1",
