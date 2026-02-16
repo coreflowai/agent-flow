@@ -1063,11 +1063,10 @@ const BLOCKING_TOOLS = new Set(['ExitPlanMode', 'AskUserQuestion', 'UserPromptSu
 const TOOL_STALE_MS = 2 * 60 * 1000 // 2 min
 
 function isSessionWaiting(session) {
-  if (session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start') return true
-  if (session.lastEventType === 'tool.start') {
-    if (BLOCKING_TOOLS.has(session.lastEventText)) return true
-    if (Date.now() - session.lastEventTime > TOOL_STALE_MS) return true
-  }
+  if (session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start' || session.lastEventType === 'session.end') return true
+  if (session.lastEventType === 'tool.start' && BLOCKING_TOOLS.has(session.lastEventText)) return true
+  // Any session idle for >2 min is not actively cooking
+  if (Date.now() - session.lastEventTime > TOOL_STALE_MS) return true
   return false
 }
 

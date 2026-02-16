@@ -90,9 +90,12 @@ function post(sessionId: string, event: Record<string, unknown>) {
 }
 
 function extractSessionId(event: any): string | null {
+  // Prefer explicit sessionID fields
   if (event.properties?.sessionID) return event.properties.sessionID;
   if (event.properties?.info?.sessionID) return event.properties.info.sessionID;
   if (event.properties?.part?.sessionID) return event.properties.part.sessionID;
+  // Only use info.id for session.* events (info.id is the session ID there)
+  // For other events info.id is a message/entity ID — not a session ID
   if (event.type?.startsWith("session.") && event.properties?.info?.id) return event.properties.info.id;
   return null;
 }
