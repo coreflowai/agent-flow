@@ -23,7 +23,7 @@ const sessionList = document.getElementById('session-list')
 const eventBody = document.getElementById('event-body')
 const eventPanel = document.getElementById('event-panel')
 const emptyState = document.getElementById('empty-state')
-const connectionStatus = document.getElementById('connection-status')
+// connection-dot is looked up in setConnectionState()
 const detailPanel = document.getElementById('detail-panel')
 const detailBadge = document.getElementById('detail-badge')
 const detailTime = document.getElementById('detail-time')
@@ -111,20 +111,14 @@ function setConnectionState(state) {
   const overlayText = document.getElementById('connection-overlay-text')
 
   if (state === 'connected') {
-    connectionStatus.textContent = 'connected'
-    connectionStatus.className = 'badge badge-sm badge-success text-[10px] hidden sm:inline-flex'
-    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-success'
+    if (dot) { dot.className = 'inline-block w-2 h-2 rounded-full bg-success'; dot.title = 'connected' }
     if (overlay) overlay.classList.add('hidden')
   } else if (state === 'disconnected') {
-    connectionStatus.textContent = 'disconnected'
-    connectionStatus.className = 'badge badge-sm badge-error text-[10px] hidden sm:inline-flex'
-    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-error'
+    if (dot) { dot.className = 'inline-block w-2 h-2 rounded-full bg-error'; dot.title = 'disconnected' }
     if (overlay) overlay.classList.remove('hidden')
     if (overlayText) overlayText.textContent = 'Reconnecting...'
   } else {
-    connectionStatus.textContent = 'connecting...'
-    connectionStatus.className = 'badge badge-sm badge-outline text-[10px] hidden sm:inline-flex'
-    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-base-300 animate-pulse'
+    if (dot) { dot.className = 'inline-block w-2 h-2 rounded-full bg-base-300 animate-pulse'; dot.title = 'connecting...' }
     if (overlay) overlay.classList.remove('hidden')
     if (overlayText) overlayText.textContent = 'Connecting...'
   }
@@ -432,12 +426,19 @@ function showEmptyState() {
 
 // --- Render events ---
 
+// Event types hidden from the timeline (still stored in DB)
+const HIDDEN_EVENT_TYPES = new Set([
+  'session.updated', 'session.status', 'session.diff',
+  'message.updated', 'step.start', 'step.finish',
+])
+
 // Group raw events into display rows (merge tool.start + tool.end pairs)
 function groupEvents(events) {
   const rows = []
   const pendingTools = {} // toolName+idx -> start event
   for (let i = 0; i < events.length; i++) {
     const e = events[i]
+    if (HIDDEN_EVENT_TYPES.has(e.type)) continue
     if (e.type === 'tool.start') {
       pendingTools[i] = e
     } else if (e.type === 'tool.end') {
@@ -1239,10 +1240,11 @@ async function loadInvites() {
 // Init Lucide icons
 lucide.createIcons()
 
-// Show overlay after delay if not connected yet
-setTimeout(() => {
-  if (!socket.connected) setConnectionState('connecting')
-}, 500)
-
-// Sync connection state on load (in case connect fired before handler was registered)
+// Sync connection state — check immediately and after a tick (covers race with connect event)
 if (socket.connected) setConnectionState('connected')
+setTimeout(() => {
+  if (socket.connected) setConnectionState('connected')
+  else setTimeout(() => {
+    if (!socket.connected) setConnectionState('connecting')
+  }, 400)
+}, 100)
