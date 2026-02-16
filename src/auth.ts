@@ -49,13 +49,23 @@ export function createAuth(options?: { baseURL?: string; disableSignUp?: boolean
 
 export type Auth = ReturnType<typeof createAuth>
 
+// Cache verified API keys for 5 minutes to avoid rate limits
+const apiKeyCache = new Map<string, { userId: string; expiresAt: number }>()
+const API_KEY_CACHE_TTL = 5 * 60 * 1000
+
 export async function authenticateRequest(req: Request, auth: Auth): Promise<{ authenticated: boolean; userId?: string }> {
   // 1. Check x-api-key header
   const apiKeyHeader = req.headers.get("x-api-key")
   if (apiKeyHeader) {
+    // Check cache first
+    const cached = apiKeyCache.get(apiKeyHeader)
+    if (cached && cached.expiresAt > Date.now()) {
+      return { authenticated: true, userId: cached.userId }
+    }
     try {
       const result = await auth.api.verifyApiKey({ body: { key: apiKeyHeader } })
       if (result.valid && result.key) {
+        apiKeyCache.set(apiKeyHeader, { userId: result.key.userId, expiresAt: Date.now() + API_KEY_CACHE_TTL })
         return { authenticated: true, userId: result.key.userId }
       }
     } catch {}
