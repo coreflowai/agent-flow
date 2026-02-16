@@ -85,7 +85,7 @@ GIT_TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null || true)
 GIT_WORKDIR=""
 [ -n "$GIT_TOPLEVEL" ] && GIT_WORKDIR=$(basename "$GIT_TOPLEVEL")
 GIT_REPO_NAME=""
-[ -n "$GIT_REMOTE" ] && GIT_REPO_NAME=$(echo "$GIT_REMOTE" | sed -E 's#^.+[:/]([^/]+/[^/]+?)(\.git)?$#\1#')
+[ -n "$GIT_REMOTE" ] && GIT_REPO_NAME=$(echo "$GIT_REMOTE" | sed -E 's#(\.git)$##' | sed -E 's#^.+[:/]([^/]+/[^/]+)$#\1#')
 [ -n "$GIT_REMOTE" ] && GIT_REMOTE=$(echo "$GIT_REMOTE" | sed -E 's#https://[^@]+@#https://#')
 
 GIT_OBJ=$(jq -n \
