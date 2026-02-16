@@ -103,7 +103,7 @@ export function addEvent(event: AgentFlowEvent) {
   }).run()
 }
 
-const STALE_TIMEOUT = 2 * 60 * 1000 // 2 minutes
+const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 function deriveEventText(event: { type: string; text: string | null; toolName: string | null; error: string | null } | undefined): string | null {
   if (!event) return null

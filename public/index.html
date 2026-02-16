@@ -152,6 +152,13 @@
         <span class="text-xs opacity-60">&larr;</span>
         <span class="text-xs opacity-60">Sessions</span>
       </div>
+      <!-- Session toolbar (visible when a session is selected) -->
+      <div id="session-toolbar" class="hidden items-center justify-end gap-1 px-3 py-1.5 border-b border-base-200 bg-base-100">
+        <button id="btn-copy-conversation" class="btn btn-xs btn-ghost opacity-50 hover:opacity-100 gap-1" title="Copy conversation">
+          <i data-lucide="copy" class="w-3 h-3"></i>
+          <span class="text-[10px]">Copy</span>
+        </button>
+      </div>
       <div id="empty-state" class="flex items-center justify-center flex-1">
         <div class="text-center opacity-40">
           <p class="text-sm mb-1">Select a session to view events</p>

@@ -285,7 +285,7 @@ function normalizeOpencodePlugin(
       }
 
     case 'message.updated': {
-      const msg = (properties.message ?? properties) as Record<string, unknown>
+      const msg = (properties.info ?? properties.message ?? properties) as Record<string, unknown>
       const role = (msg.role ?? '') as string
       if (role === 'user') {
         return {
@@ -321,15 +321,17 @@ function normalizeOpencodePlugin(
       }
 
       if (partType === 'tool' || partType === 'tool-invocation' || partType === 'tool_use') {
-        const toolName = (part.toolName ?? part.tool_name ?? part.name ?? null) as string | null
+        const state = (part.state ?? {}) as Record<string, unknown>
+        const toolName = (part.tool ?? part.toolName ?? part.tool_name ?? part.name ?? null) as string | null
         if (status === 'completed') {
           return {
             ...base,
             category: 'tool',
             type: 'tool.end',
             toolName,
-            toolInput: part.toolInput ?? part.input ?? null,
-            toolOutput: truncate(part.toolOutput ?? part.output ?? part.result ?? null),
+            toolInput: state.input ?? part.toolInput ?? part.input ?? null,
+            toolOutput: truncate(state.output ?? part.toolOutput ?? part.output ?? part.result ?? null),
+            meta: state.title ? { title: state.title } : {},
           }
         }
         if (status === 'error') {
@@ -338,7 +340,8 @@ function normalizeOpencodePlugin(
             category: 'tool',
             type: 'tool.end',
             toolName,
-            error: (part.error ?? null) as string | null,
+            toolInput: state.input ?? part.toolInput ?? part.input ?? null,
+            error: (state.error ?? part.error ?? null) as string | null,
           }
         }
         // pending, running, or other
@@ -347,7 +350,7 @@ function normalizeOpencodePlugin(
           category: 'tool',
           type: 'tool.start',
           toolName,
-          toolInput: part.toolInput ?? part.input ?? null,
+          toolInput: state.input ?? part.toolInput ?? part.input ?? null,
         }
       }
 

@@ -216,8 +216,11 @@ const AGENT_FLOW_API_KEY = process.env.AGENT_FLOW_API_KEY || "${apiKeyFromReq}";
 
 function getUser() {
   try {
-    const name = require("child_process").execSync("git config user.name", { encoding: "utf-8" }).trim();
-    const email = require("child_process").execSync("git config user.email", { encoding: "utf-8" }).trim();
+    const { execSync } = require("child_process");
+    let name = "";
+    try { name = execSync("gh api user --jq .login", { encoding: "utf-8", timeout: 3000 }).trim(); } catch {}
+    if (!name) try { name = execSync("git config user.name", { encoding: "utf-8" }).trim(); } catch {}
+    const email = execSync("git config user.email", { encoding: "utf-8" }).trim();
     const osUser = process.env.USER || require("os").userInfo().username;
     const user: Record<string, unknown> = {};
     if (name) user.name = name;
@@ -245,18 +248,21 @@ function extractSessionId(event: any): string | null {
   if (event.properties?.info?.id) return event.properties.info.id;
   if (event.properties?.sessionID) return event.properties.sessionID;
   if (event.properties?.info?.sessionID) return event.properties.info.sessionID;
+  if (event.properties?.part?.sessionID) return event.properties.part.sessionID;
   if (event.properties?.session?.id) return event.properties.session.id;
   if (event.sessionId) return event.sessionId;
   return null;
 }
 
-export default {
-  name: "agent-flow",
-  event(event: any) {
-    const sessionId = extractSessionId(event);
-    if (!sessionId) return;
-    post(sessionId, { type: event.type, properties: event.properties });
-  },
+export const AgentFlowPlugin = async () => {
+  return {
+    name: "agent-flow",
+    event: async ({ event }: { event: any }) => {
+      const sessionId = extractSessionId(event);
+      if (!sessionId) return;
+      post(sessionId, { type: event.type, properties: event.properties });
+    },
+  };
 };
 `
       return new Response(script, {
