@@ -106,6 +106,8 @@ function updateUserFilterDropdown() {
 socket.on('connect', () => {
   connectionStatus.textContent = 'connected'
   connectionStatus.className = 'badge badge-sm badge-success text-[10px]'
+  // Re-subscribe to current session after reconnect
+  if (currentSessionId) socket.emit('subscribe', currentSessionId)
 })
 socket.on('disconnect', () => {
   connectionStatus.textContent = 'disconnected'
