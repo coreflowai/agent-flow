@@ -109,16 +109,17 @@ export function createRouter(io: SocketIOServer) {
       return json({ ok: true })
     }
 
-    // GET /setup/hook.sh - serves the Claude Code hook script with correct URL
+    // GET /setup/hook.sh - serves the Claude Code hook script with correct URL and API key
     if (req.method === 'GET' && pathname === '/setup/hook.sh') {
       const proto = req.headers.get('x-forwarded-proto') || 'http'
       const origin = req.headers.get('host') ? `${proto}://${req.headers.get('host')}` : 'http://localhost:3333'
+      const apiKeyFromReq = req.headers.get('x-api-key') || ''
       const script = `#!/bin/bash
 # AgentFlow - Claude Code Hook Adapter
 # Reads hook JSON from stdin, POSTs to AgentFlow server
 # Captures user identity from git config and GitHub CLI
 AGENT_FLOW_URL="\${AGENT_FLOW_URL:-${origin}}"
-AGENT_FLOW_API_KEY="\${AGENT_FLOW_API_KEY:-}"
+AGENT_FLOW_API_KEY="\${AGENT_FLOW_API_KEY:-${apiKeyFromReq}}"
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
@@ -198,10 +199,11 @@ exit 0
       })
     }
 
-    // GET /setup/opencode-plugin.ts - serves the Open Code plugin with correct URL
+    // GET /setup/opencode-plugin.ts - serves the Open Code plugin with correct URL and API key
     if (req.method === 'GET' && pathname === '/setup/opencode-plugin.ts') {
       const proto = req.headers.get('x-forwarded-proto') || 'http'
       const origin = req.headers.get('host') ? `${proto}://${req.headers.get('host')}` : 'http://localhost:3333'
+      const apiKeyFromReq = req.headers.get('x-api-key') || ''
       const script = `/**
  * AgentFlow - Open Code Plugin Adapter
  *
@@ -209,7 +211,7 @@ exit 0
  */
 
 const AGENT_FLOW_URL = process.env.AGENT_FLOW_URL || "${origin}";
-const AGENT_FLOW_API_KEY = process.env.AGENT_FLOW_API_KEY || "";
+const AGENT_FLOW_API_KEY = process.env.AGENT_FLOW_API_KEY || "${apiKeyFromReq}";
 
 function getUser() {
   try {

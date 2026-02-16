@@ -738,15 +738,12 @@ async function populateHelpDialog() {
   const apiKey = await getOrCreateApiKey()
 
   document.getElementById('claude-config').textContent =
-`# 1. Download the hook script
+`# 1. Download the hook script (API key is baked in)
 mkdir -p ~/.claude/hooks
-curl -o ~/.claude/hooks/agent-flow.sh ${host}/setup/hook.sh
+curl -H "x-api-key: ${apiKey}" -o ~/.claude/hooks/agent-flow.sh ${host}/setup/hook.sh
 chmod +x ~/.claude/hooks/agent-flow.sh
 
-# 2. Set your API key
-export AGENT_FLOW_API_KEY="${apiKey}"
-
-# 3. Add to ~/.claude/settings.json (global)
+# 2. Add to ~/.claude/settings.json (global)
 cat <<'EOF' > ~/.claude/settings.json
 {
   "hooks": {
