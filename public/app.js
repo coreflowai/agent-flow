@@ -346,8 +346,8 @@ function renderSessionList() {
     return `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
       <div class="opacity-60 flex-shrink-0">${icon}</div>
       <div class="flex-1 min-w-0">
-        <div class="text-xs truncate font-medium">${esc(title)}</div>
-        <div class="text-[10px] opacity-50 truncate">${lastLabel}${lastText ? ' · ' + lastText : ''}</div>
+        <div class="text-xs truncate font-medium">${lastText ? lastText : lastLabel}</div>
+        <div class="text-[10px] opacity-50 truncate">${esc(title)}${lastText ? ' · ' + lastLabel : ''}</div>
         <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
       </div>
       <div class="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
@@ -1052,21 +1052,20 @@ function updateBubbleContent(el, session) {
   const dur = (session.lastEventTime || Date.now()) - session.startTime
   const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
 
-  // Show assistant message for waiting bubbles, activity preview for cooking
-  const previewLine = waiting && lastText
-    ? `<div class="text-[10px] opacity-60 mt-1 line-clamp-2 leading-snug">${lastText}</div>`
-    : lastText
-      ? `<div class="text-[10px] opacity-40 truncate">${lastLabel} · ${lastText}</div>`
-      : `<div class="text-[10px] opacity-40 truncate">${lastLabel}</div>`
+  // Primary: task/message, Secondary: user name
+  const primaryLine = lastText || lastLabel
+  const secondaryLine = waiting && lastText
+    ? `<div class="text-[10px] opacity-60 mt-1 line-clamp-2 leading-snug">${esc(title)}</div>`
+    : `<div class="text-[10px] opacity-40 truncate">${esc(title)}${lastText ? ' · ' + lastLabel : ''}</div>`
 
   el.innerHTML = `
     <div class="flex items-center gap-1.5 mb-1">
       <span class="opacity-60 flex-shrink-0">${icon}</span>
-      <span class="text-xs font-medium truncate flex-1">${esc(title)}</span>
+      <span class="text-xs font-medium truncate flex-1">${primaryLine}</span>
       ${spinner}
       <button class="archive-btn btn btn-xs btn-ghost px-1" data-bubble-archive="${session.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>
     </div>
-    ${previewLine}
+    ${secondaryLine}
     <div class="flex items-center justify-between mt-1.5">
       <span class="text-[10px] opacity-30">${durStr}</span>
       <span class="badge badge-xs badge-ghost text-[9px]">${session.eventCount} events</span>
