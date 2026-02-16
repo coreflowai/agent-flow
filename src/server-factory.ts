@@ -1,6 +1,6 @@
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server as SocketIOServer } from 'socket.io'
-import { initDb, listSessions, getSessionEvents } from './db'
+import { initDb, listSessions, getSessionEventCount } from './db'
 import { createRouter } from './routes'
 import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
 import { createInsightScheduler, type InsightScheduler } from './insights'
@@ -84,8 +84,8 @@ export function createServer(options: ServerOptions = {}) {
 
     socket.on('subscribe', (sessionId: string) => {
       socket.join(`session:${sessionId}`)
-      const events = getSessionEvents(sessionId)
-      socket.emit('session:events', { sessionId, events })
+      const totalEvents = getSessionEventCount(sessionId)
+      socket.emit('session:meta', { sessionId, totalEvents })
     })
 
     socket.on('unsubscribe', (sessionId: string) => {

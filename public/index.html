@@ -18,9 +18,12 @@
     .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
     .session-item:hover { background: oklch(94% 0 0); }
     .session-item.active { background: oklch(90% 0 0); }
-    .event-row { outline: none; transition: background 0.15s; }
+    .event-row { outline: none; transition: background 0.15s; position: absolute; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 36px; box-sizing: border-box; }
     .event-row:hover { background: oklch(96% 0 0); }
     .event-row.selected { background: oklch(92% 0 0); }
+    .event-row .cell-time { flex-shrink: 0; padding: 8px 8px 8px 12px; }
+    .event-row .cell-content { flex: 1; min-width: 0; padding: 8px 12px 8px 0; overflow: hidden; }
+    .event-row .cell-content > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .event-detail { max-height: 200px; overflow-y: auto; }
     #session-list:focus, #event-panel:focus { outline: none; }
     .resize-handle-x { width: 4px; cursor: col-resize; transition: background 0.15s; flex-shrink: 0; }
@@ -64,21 +67,26 @@
     .session-item:hover .archive-btn, .agent-bubble:hover .archive-btn { opacity: 0.5; }
     .archive-btn:hover { opacity: 1 !important; }
 
-    /* Insight cards */
-    .insight-card {
-      border-radius: 12px; border: 1px solid oklch(85% 0 0);
-      padding: 16px; background: oklch(99% 0 0);
-      transition: box-shadow 0.2s;
+    /* Insight list items */
+    .insight-item {
+      cursor: pointer; outline: none; transition: background 0.15s;
+      border-bottom: 1px solid oklch(90% 0 0);
     }
-    .insight-card:hover { box-shadow: 0 2px 8px oklch(0% 0 0 / 0.06); }
-    .insight-content { line-height: 1.6; }
-    .insight-content h2 { font-size: 14px; font-weight: 600; margin-top: 16px; margin-bottom: 8px; }
-    .insight-content h3 { font-size: 12px; font-weight: 600; margin-top: 12px; margin-bottom: 6px; }
-    .insight-content p { margin-bottom: 8px; }
-    .insight-content ul, .insight-content ol { margin-left: 16px; margin-bottom: 8px; }
-    .insight-content li { margin-bottom: 4px; }
-    .insight-content hr { margin: 12px 0; border-color: oklch(90% 0 0); }
-    .insight-content em { opacity: 0.6; font-size: 10px; }
+    .insight-item:hover { background: oklch(96% 0 0); }
+    .insight-item.active { background: oklch(92% 0 0); }
+
+    /* Insight content styling */
+    .insight-content { line-height: 1.7; }
+    .insight-content h1 { font-size: 18px; font-weight: 700; margin-top: 24px; margin-bottom: 12px; }
+    .insight-content h2 { font-size: 15px; font-weight: 600; margin-top: 20px; margin-bottom: 10px; color: oklch(30% 0 0); }
+    .insight-content h3 { font-size: 13px; font-weight: 600; margin-top: 16px; margin-bottom: 8px; color: oklch(40% 0 0); }
+    .insight-content p { margin-bottom: 12px; }
+    .insight-content ul, .insight-content ol { margin-left: 20px; margin-bottom: 12px; }
+    .insight-content li { margin-bottom: 6px; }
+    .insight-content hr { margin: 16px 0; border-color: oklch(90% 0 0); }
+    .insight-content em { opacity: 0.6; font-size: 11px; }
+    .insight-content strong { font-weight: 600; }
+    .insight-content code { background: oklch(95% 0 0); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 
     /* Mobile responsive */
     @media (max-width: 767px) {
@@ -108,7 +116,7 @@
       #mobile-back span { font-size: 13px; }
 
       /* Event panel text sizes */
-      .event-row td { padding-top: 8px; padding-bottom: 8px; }
+      .event-row .cell-time, .event-row .cell-content { padding-top: 8px; padding-bottom: 8px; }
 
       /* Help dialog tabs: horizontal scroll */
       #setup-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
@@ -228,9 +236,10 @@
         </div>
       </div>
       <div id="event-panel" class="flex-1 overflow-y-auto hidden" tabindex="-1">
-        <table id="event-table" class="w-full">
-          <tbody id="event-body"></tbody>
-        </table>
+        <div id="event-viewport" class="relative w-full">
+          <div id="event-sentinel" style="height:0"></div>
+          <div id="event-body"></div>
+        </div>
       </div>
       <!-- Event Detail Panel -->
       <div id="detail-handle" class="resize-handle-y hidden"></div>
@@ -249,28 +258,57 @@
   </div> <!-- /list-view -->
 
   <!-- Insights View -->
-  <div id="insights-view" class="h-[calc(100vh-2.5rem)] flex flex-col hidden">
-    <div class="px-3 sm:px-4 py-2 border-b border-base-300 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 min-w-0">
-        <button id="insights-back" class="btn btn-xs btn-ghost opacity-60" title="Back to sessions">
-          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
-        </button>
-        <span class="font-semibold text-[10px] sm:text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Insights</span>
-        <span id="insights-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
+  <div id="insights-view" class="h-[calc(100vh-2.5rem)] flex hidden">
+    <!-- Insights List (Left Panel) -->
+    <div id="insights-sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:320px;min-width:200px;max-width:50vw;">
+      <div class="px-3 py-2 border-b border-base-300 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <button id="insights-back" class="btn btn-xs btn-ghost opacity-60" title="Back to sessions">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          </button>
+          <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Insights</span>
+          <span id="insights-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
+        </div>
+        <select id="insights-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[100px]">
+          <option value="">All users</option>
+        </select>
       </div>
-      <select id="insights-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
-        <option value="">All users</option>
-      </select>
-    </div>
-    <div id="insights-scroll" class="flex-1 overflow-y-auto p-4 sm:p-6">
-      <div id="insights-empty" class="flex items-center justify-center h-full">
-        <div class="text-center opacity-40">
-          <i data-lucide="lightbulb" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
-          <p class="text-sm mb-1">No insights yet</p>
-          <p class="text-[10px]">Insights are generated automatically by analyzing your sessions</p>
+      <div id="insights-list" class="flex-1 overflow-y-auto">
+        <div id="insights-empty" class="p-4 text-center opacity-40 text-xs">
+          <i data-lucide="lightbulb" class="w-6 h-6 mx-auto mb-2 opacity-30"></i>
+          <p class="mb-1">No insights yet</p>
+          <p class="text-[10px]">Generated every 30 minutes</p>
         </div>
       </div>
-      <div id="insights-list" class="space-y-4 hidden"></div>
+    </div>
+    <div id="insights-sidebar-handle" class="resize-handle-x"></div>
+
+    <!-- Insight Detail (Right Panel) -->
+    <div id="insights-main" class="flex-1 flex flex-col overflow-hidden">
+      <div id="insights-detail-empty" class="flex items-center justify-center flex-1">
+        <div class="text-center opacity-40">
+          <i data-lucide="file-text" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
+          <p class="text-sm mb-1">Select an insight to view details</p>
+          <p class="text-[10px]">Insights contain AI-generated analysis of your sessions</p>
+        </div>
+      </div>
+      <div id="insights-detail" class="flex-1 overflow-y-auto hidden">
+        <div class="px-4 sm:px-6 py-4 border-b border-base-200 bg-base-100 sticky top-0">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span id="insight-detail-user" class="text-sm font-semibold"></span>
+                <span id="insight-detail-repo" class="text-xs opacity-40"></span>
+              </div>
+              <div id="insight-detail-meta" class="text-[10px] opacity-40 mt-1"></div>
+            </div>
+            <button id="insight-detail-delete" class="btn btn-xs btn-ghost opacity-40 hover:opacity-100" title="Delete insight">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+        <div id="insight-detail-content" class="px-4 sm:px-6 py-4 insight-content text-sm"></div>
+      </div>
     </div>
   </div> <!-- /insights-view -->
 

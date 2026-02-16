@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { resolve } from 'path'
 import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
-import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, archiveSession, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
+import { addEvent, getSession, getSessionEvents, getSessionEventsPaginated, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, archiveSession, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
 import { listInsights, getInsight, deleteInsight } from './db/insights'
 import { createAuth, migrateAuth } from './auth'
 import type { IngestPayload } from './types'
@@ -90,6 +90,16 @@ export function createRouter(io: SocketIOServer) {
     if (req.method === 'GET' && pathname === '/api/sessions') {
       const userId = url.searchParams.get('userId') || undefined
       return json(listSessions(userId))
+    }
+
+    // GET /api/sessions/:id/events — paginated events
+    if (req.method === 'GET' && pathname.match(/^\/api\/sessions\/[^/]+\/events$/)) {
+      const id = pathname.replace('/api/sessions/', '').replace('/events', '')
+      const session = getSession(id)
+      if (!session) return json({ error: 'Session not found' }, 404)
+      const limit = parseInt(url.searchParams.get('limit') || '200', 10)
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+      return json(getSessionEventsPaginated(id, { limit, offset }))
     }
 
     // GET /api/sessions/:id

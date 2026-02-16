@@ -196,6 +196,53 @@ export function getSessionEvents(sessionId: string): AgentFlowEvent[] {
     }))
 }
 
+export function getSessionEventsPaginated(sessionId: string, opts: {
+  limit?: number; offset?: number
+}): { events: AgentFlowEvent[]; total: number; hasMore: boolean } {
+  const db = getDb()
+  const { limit = 200, offset = 0 } = opts
+
+  const [{ count: total }] = db
+    .select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(eq(events.sessionId, sessionId))
+    .all()
+
+  const rows = db.select().from(events)
+    .where(eq(events.sessionId, sessionId))
+    .orderBy(events.timestamp)
+    .offset(offset)
+    .limit(limit)
+    .all()
+    .map(row => ({
+      id: row.id,
+      sessionId: row.sessionId,
+      timestamp: row.timestamp,
+      source: row.source as AgentFlowEvent['source'],
+      category: row.category as AgentFlowEvent['category'],
+      type: row.type,
+      role: row.role as AgentFlowEvent['role'],
+      text: row.text,
+      toolName: row.toolName,
+      toolInput: row.toolInput,
+      toolOutput: row.toolOutput,
+      error: row.error,
+      meta: (row.meta ?? {}) as Record<string, unknown>,
+    }))
+
+  return { events: rows, total, hasMore: offset + limit < total }
+}
+
+export function getSessionEventCount(sessionId: string): number {
+  const db = getDb()
+  const [{ count }] = db
+    .select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(eq(events.sessionId, sessionId))
+    .all()
+  return count
+}
+
 export function listSessions(userId?: string): Session[] {
   const db = getDb()
   const query = userId

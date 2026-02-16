@@ -13,6 +13,17 @@ let focusArea = 'sessions' // 'sessions' | 'events'
 let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// Virtual scrolling constants
+const ROW_HEIGHT = 36
+const OVERSCAN = 15
+const CHUNK_SIZE = 200
+
+let totalEventCount = 0
+let chunkLoading = false
+let renderPending = false
+const renderedRows = new Map()  // rowIndex -> DOM element
+const rowPool = []              // recycled elements
+
 // Source icons (Anthropic / OpenAI)
 const ICON_CLAUDE = `<svg width="14" height="14" viewBox="0 0 248 248" fill="none"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>`
 const ICON_OPENAI = `<svg width="14" height="14" viewBox="29 29 122 122" fill="currentColor"><path d="M75.91 73.628V62.232c0-.96.36-1.68 1.199-2.16l22.912-13.194c3.119-1.8 6.838-2.639 10.676-2.639 14.394 0 23.511 11.157 23.511 23.032 0 .839 0 1.799-.12 2.758l-23.752-13.914c-1.439-.84-2.879-.84-4.318 0L75.91 73.627Zm53.499 44.383v-27.23c0-1.68-.72-2.88-2.159-3.719L97.142 69.55l9.836-5.638c.839-.48 1.559-.48 2.399 0l22.912 13.195c6.598 3.839 11.035 11.995 11.035 19.912 0 9.116-5.397 17.513-13.915 20.992v.001Zm-60.577-23.99-9.836-5.758c-.84-.48-1.2-1.2-1.2-2.16v-26.39c0-12.834 9.837-22.55 23.152-22.55 5.039 0 9.716 1.679 13.676 4.678L70.993 55.516c-1.44.84-2.16 2.039-2.16 3.719v34.787-.002Zm21.173 12.234L75.91 98.339V81.546l14.095-7.917 14.094 7.917v16.793l-14.094 7.916Zm9.056 36.467c-5.038 0-9.716-1.68-13.675-4.678l23.631-13.676c1.439-.839 2.159-2.038 2.159-3.718V85.863l9.956 5.757c.84.48 1.2 1.2 1.2 2.16v26.389c0 12.835-9.957 22.552-23.27 22.552v.001Zm-28.43-26.75L47.72 102.778c-6.599-3.84-11.036-11.996-11.036-19.913 0-9.236 5.518-17.513 14.034-20.992v27.35c0 1.68.72 2.879 2.16 3.718l29.989 17.393-9.837 5.638c-.84.48-1.56.48-2.399 0Zm-1.318 19.673c-13.555 0-23.512-10.196-23.512-22.792 0-.959.12-1.919.24-2.879l23.63 13.675c1.44.84 2.88.84 4.32 0l30.108-17.392v11.395c0 .96-.361 1.68-1.2 2.16l-22.912 13.194c-3.119 1.8-6.837 2.639-10.675 2.639Z"/></svg>`
@@ -22,6 +33,7 @@ const ICON_OPENCODE = `<img src="https://opencode.ai/favicon-v3.ico" width="14" 
 const sessionList = document.getElementById('session-list')
 const eventBody = document.getElementById('event-body')
 const eventPanel = document.getElementById('event-panel')
+const eventSentinel = document.getElementById('event-sentinel')
 const emptyState = document.getElementById('empty-state')
 // connection-dot is looked up in setConnectionState()
 const detailPanel = document.getElementById('detail-panel')
@@ -49,6 +61,7 @@ const btnTitle = document.getElementById('btn-title')
 // Insights state
 let insights = []
 let insightsLoaded = false
+let selectedInsightId = null
 
 // Insights DOM
 const insightsView = document.getElementById('insights-view')
@@ -58,6 +71,13 @@ const insightsCount = document.getElementById('insights-count')
 const insightsUserFilter = document.getElementById('insights-user-filter')
 const insightsBack = document.getElementById('insights-back')
 const btnInsights = document.getElementById('btn-insights')
+const insightsDetailEmpty = document.getElementById('insights-detail-empty')
+const insightsDetail = document.getElementById('insights-detail')
+const insightDetailUser = document.getElementById('insight-detail-user')
+const insightDetailRepo = document.getElementById('insight-detail-repo')
+const insightDetailMeta = document.getElementById('insight-detail-meta')
+const insightDetailContent = document.getElementById('insight-detail-content')
+const insightDetailDelete = document.getElementById('insight-detail-delete')
 
 // --- View switching ---
 function switchView(view) {
@@ -197,17 +217,52 @@ socket.on('sessions:cleared', () => {
 })
 
 // --- Events ---
-socket.on('session:events', ({ sessionId, events }) => {
+socket.on('session:meta', ({ sessionId, totalEvents }) => {
   if (sessionId !== currentSessionId) return
-  currentEvents = events
-  renderEvents()
+  totalEventCount = totalEvents
+  loadInitialChunk()
 })
 
 socket.on('event', (event) => {
   if (event.sessionId !== currentSessionId) return
   currentEvents.push(event)
-  renderEvents()
+  totalEventCount++
+  displayRows = groupEvents(currentEvents)
+  scheduleRender()
 })
+
+async function loadInitialChunk() {
+  chunkLoading = true
+  try {
+    const res = await fetch(`/api/sessions/${currentSessionId}/events?limit=${CHUNK_SIZE}&offset=0`, { credentials: 'include' })
+    const data = await res.json()
+    if (data.events) {
+      currentEvents = data.events
+      totalEventCount = data.total
+    }
+  } catch {}
+  chunkLoading = false
+  displayRows = groupEvents(currentEvents)
+  scheduleRender()
+}
+
+async function loadNextChunk() {
+  if (chunkLoading) return
+  const loaded = currentEvents.length
+  if (loaded >= totalEventCount) return
+  chunkLoading = true
+  try {
+    const res = await fetch(`/api/sessions/${currentSessionId}/events?limit=${CHUNK_SIZE}&offset=${loaded}`, { credentials: 'include' })
+    const data = await res.json()
+    if (data.events) {
+      currentEvents.push(...data.events)
+      totalEventCount = data.total
+    }
+  } catch {}
+  chunkLoading = false
+  displayRows = groupEvents(currentEvents)
+  scheduleRender()
+}
 
 socket.on('session:deleted', (id) => {
   sessions = sessions.filter(s => s.id !== id)
@@ -337,6 +392,8 @@ function navigateEvent(delta) {
   if (newIdx !== selectedEventIdx) {
     selectedEventIdx = newIdx
     highlightEvent()
+    // Proactive chunk loading when near bottom of loaded data
+    if (displayRows.length - newIdx < 20) loadNextChunk()
   }
 }
 
@@ -349,10 +406,17 @@ function highlightSession() {
 }
 
 function highlightEvent() {
-  eventBody.querySelectorAll('.event-row').forEach((el, i) => {
-    el.classList.toggle('selected', i === selectedEventIdx)
-    if (i === selectedEventIdx) el.scrollIntoView({ block: 'nearest' })
-  })
+  if (selectedEventIdx >= 0) {
+    const targetY = selectedEventIdx * ROW_HEIGHT
+    const panelTop = eventPanel.scrollTop
+    const panelBottom = panelTop + eventPanel.clientHeight
+    if (targetY < panelTop) {
+      eventPanel.scrollTop = targetY
+    } else if (targetY + ROW_HEIGHT > panelBottom) {
+      eventPanel.scrollTop = targetY + ROW_HEIGHT - eventPanel.clientHeight
+    }
+  }
+  renderVisibleRows()
   renderDetail()
 }
 
@@ -439,8 +503,16 @@ function selectSession(sessionId) {
   if (currentSessionId) socket.emit('unsubscribe', currentSessionId)
   currentSessionId = sessionId
   currentEvents = []
+  displayRows = []
   selectedEventIdx = -1
-  eventBody.innerHTML = ''
+  totalEventCount = 0
+  chunkLoading = false
+  // Clear virtual scrolling state
+  for (const [ri, el] of renderedRows) {
+    releaseRow(el)
+  }
+  renderedRows.clear()
+  eventSentinel.style.height = '0'
   emptyState.classList.add('hidden')
   eventPanel.classList.remove('hidden')
   sessionToolbar.classList.remove('hidden'); sessionToolbar.classList.add('flex')
@@ -455,7 +527,9 @@ function showEmptyState() {
   eventPanel.classList.add('hidden')
   sessionToolbar.classList.add('hidden'); sessionToolbar.classList.remove('flex')
   detailPanel.classList.add('hidden'); detailHandle.classList.add('hidden')
-  eventBody.innerHTML = ''
+  for (const [ri, el] of renderedRows) releaseRow(el)
+  renderedRows.clear()
+  totalEventCount = 0
   mobileBack()
 }
 
@@ -505,54 +579,82 @@ function groupEvents(events) {
   return rows
 }
 
-function renderEvents() {
-  displayRows = groupEvents(currentEvents)
-  eventBody.innerHTML = ''
-  displayRows.forEach((row, ri) => appendDisplayRow(row, ri))
+function scheduleRender() {
+  if (renderPending) return
+  renderPending = true
+  requestAnimationFrame(() => {
+    renderPending = false
+    renderVisibleRows()
+  })
 }
 
-function appendDisplayRow(row, ri) {
-  const tr = document.createElement('tr')
-  tr.className = 'event-row border-b border-base-200 hover:bg-base-200 transition-colors cursor-pointer'
-  tr.dataset.ri = ri
-  tr.addEventListener('click', () => {
-    focusArea = 'events'
-    selectedEventIdx = ri
-    highlightEvent()
-  })
+function renderVisibleRows() {
+  const totalHeight = displayRows.length * ROW_HEIGHT
+  eventSentinel.style.height = totalHeight + 'px'
 
+  const scrollTop = eventPanel.scrollTop
+  const clientHeight = eventPanel.clientHeight
+  let startIdx = Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN
+  let endIdx = Math.ceil((scrollTop + clientHeight) / ROW_HEIGHT) + OVERSCAN
+  startIdx = Math.max(0, startIdx)
+  endIdx = Math.min(displayRows.length - 1, endIdx)
+
+  // Remove rows outside the visible range
+  for (const [ri, el] of renderedRows) {
+    if (ri < startIdx || ri > endIdx) {
+      releaseRow(el)
+      renderedRows.delete(ri)
+    }
+  }
+
+  // Create/update rows inside the visible range
+  for (let ri = startIdx; ri <= endIdx; ri++) {
+    let el = renderedRows.get(ri)
+    if (!el) {
+      el = acquireRow()
+      populateRow(el, displayRows[ri], ri)
+      el.style.transform = `translateY(${ri * ROW_HEIGHT}px)`
+      eventBody.appendChild(el)
+      renderedRows.set(ri, el)
+    }
+    el.classList.toggle('selected', ri === selectedEventIdx)
+  }
+
+  // Trigger chunk loading when near bottom of loaded data
+  if (displayRows.length - endIdx < 20) loadNextChunk()
+}
+
+function populateRow(el, row, ri) {
+  el.dataset.ri = ri
   if (row.kind === 'tool') {
     const e = row.end
     const time = timeAgo(row.start.timestamp)
     const dur = e.timestamp - row.start.timestamp
     const durStr = dur > 1000 ? (dur / 1000).toFixed(1) + 's' : dur + 'ms'
-    tr.innerHTML = `
-      <td class="pl-3 pr-2 py-1 align-top w-0 whitespace-nowrap">
+    el.innerHTML = `
+      <div class="cell-time">
         <span class="text-[10px] opacity-40">${time}</span>
-      </td>
-      <td class="py-1 pr-3">
+      </div>
+      <div class="cell-content">
         <div class="flex items-center gap-1.5">
           <span class="text-warning text-xs font-semibold">${esc(e.toolName || '?')}</span>
           <span class="text-[10px] opacity-30">${durStr}</span>
         </div>
-        ${renderValuePreview(row.start.toolInput, 'opacity-50')}
-        ${renderValuePreview(e.toolOutput, 'opacity-40')}
-      </td>
+      </div>
     `
   } else if (row.kind === 'tool-pending') {
     const e = row.event
     const time = timeAgo(e.timestamp)
-    tr.innerHTML = `
-      <td class="pl-3 pr-2 py-1 align-top w-0 whitespace-nowrap">
+    el.innerHTML = `
+      <div class="cell-time">
         <span class="text-[10px] opacity-40">${time}</span>
-      </td>
-      <td class="py-1 pr-3">
+      </div>
+      <div class="cell-content">
         <div class="flex items-center gap-1.5">
           <span class="text-warning text-xs font-semibold">${esc(e.toolName || '?')}</span>
           <span class="css-spinner" style="opacity:0.3"></span>
         </div>
-        ${renderValuePreview(e.toolInput, 'opacity-50')}
-      </td>
+      </div>
     `
   } else {
     const e = row.event
@@ -563,18 +665,43 @@ function appendDisplayRow(row, ri) {
     }[e.category] || ''
     const label = formatLabel(e)
     const preview = formatPreview(e)
-    tr.innerHTML = `
-      <td class="pl-3 pr-2 py-1 align-top w-0 whitespace-nowrap">
+    el.innerHTML = `
+      <div class="cell-time">
         <span class="text-[10px] opacity-40">${time}</span>
-      </td>
-      <td class="py-1 pr-3">
+      </div>
+      <div class="cell-content">
         <span class="${color} text-xs font-semibold">${label}</span>
-        ${preview ? `<pre class="event-detail text-[10px] opacity-50 mt-0.5 whitespace-pre-wrap break-all leading-tight">${preview}</pre>` : ''}
-      </td>
+        ${preview ? `<span class="text-[10px] opacity-50 ml-1">${preview}</span>` : ''}
+      </div>
     `
   }
-  eventBody.appendChild(tr)
 }
+
+function acquireRow() {
+  if (rowPool.length > 0) return rowPool.pop()
+  const el = document.createElement('div')
+  el.className = 'event-row border-b border-base-200 cursor-pointer'
+  return el
+}
+
+function releaseRow(el) {
+  el.remove()
+  if (rowPool.length < 100) rowPool.push(el)
+}
+
+// Click delegation on event body
+eventBody.addEventListener('click', (e) => {
+  const row = e.target.closest('.event-row')
+  if (!row) return
+  selectedEventIdx = parseInt(row.dataset.ri)
+  focusArea = 'events'
+  highlightEvent()
+})
+
+// Scroll listener for virtual scrolling
+eventPanel.addEventListener('scroll', () => {
+  requestAnimationFrame(renderVisibleRows)
+}, { passive: true })
 
 function formatSessionLastEvent(type) {
   switch (type) {
@@ -688,7 +815,7 @@ function esc(s) {
 function closeDetail() {
   selectedEventIdx = -1
   detailPanel.classList.add('hidden'); detailHandle.classList.add('hidden')
-  eventBody.querySelectorAll('.event-row').forEach(el => el.classList.remove('selected'))
+  renderVisibleRows()
 }
 
 function renderDetail() {
@@ -999,6 +1126,7 @@ function setupResize(handleId, target, axis) {
 
 setupResize('sidebar-handle', 'sidebar', 'x')
 setupResize('detail-handle', 'detail-panel', 'y')
+setupResize('insights-sidebar-handle', 'insights-sidebar', 'x')
 
 // --- Mobile responsive ---
 const sidebar = document.getElementById('sidebar')
@@ -1401,95 +1529,201 @@ function renderInsights() {
 
   insightsCount.textContent = filtered.length
   insightsEmpty.classList.toggle('hidden', filtered.length > 0)
-  insightsList.classList.toggle('hidden', filtered.length === 0)
 
-  if (filtered.length === 0) return
+  if (filtered.length === 0) {
+    insightsList.innerHTML = ''
+    insightsList.appendChild(insightsEmpty)
+    hideInsightDetail()
+    return
+  }
 
-  insightsList.innerHTML = filtered.map(insight => {
+  // Build list items
+  const listHtml = filtered.map(insight => {
     const time = timeAgo(insight.createdAt)
-    const repo = insight.repoName || 'All repositories'
+    const repo = insight.repoName || 'All repos'
     const sessions = insight.sessionsAnalyzed || 0
     const events = insight.eventsAnalyzed || 0
+    const isActive = insight.id === selectedInsightId
 
-    // Token usage from meta
-    const meta = insight.meta || {}
-    const tokens = meta.tokenUsage
-      ? `${meta.tokenUsage.inputTokens + meta.tokenUsage.outputTokens} tokens`
-      : ''
-    const duration = meta.durationMs ? `${(meta.durationMs / 1000).toFixed(1)}s` : ''
-    const model = meta.model || ''
+    // Extract summary from content (first non-empty line after ## Summary)
+    const summaryMatch = insight.content?.match(/## Summary\n+([^\n#]+)/)
+    const summary = summaryMatch ? summaryMatch[1].trim() : ''
+    const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 80)
 
     // Categories badges
-    const categories = (insight.categories || []).map(c =>
-      `<span class="badge badge-xs badge-ghost text-[9px]">${esc(c)}</span>`
-    ).join('')
+    const categories = (insight.categories || []).slice(0, 2).map(c => {
+      const color = c === 'high-frustration' ? 'badge-error' : 'badge-ghost'
+      return `<span class="badge badge-xs ${color} text-[9px]">${esc(c.replace('-', ' '))}</span>`
+    }).join('')
 
-    // Convert markdown content to HTML (basic)
-    const contentHtml = markdownToHtml(insight.content || '')
-
-    return `<div class="insight-card" data-id="${insight.id}">
-      <div class="flex items-start justify-between gap-2 mb-2">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-xs font-semibold">${esc(insight.userId)}</span>
-            <span class="text-[10px] opacity-40">${esc(repo)}</span>
-            ${categories}
-          </div>
-          <div class="text-[10px] opacity-40 mt-0.5">
-            ${time} · ${sessions} sessions · ${events} events
-            ${model ? ` · ${esc(model)}` : ''}
-            ${duration ? ` · ${duration}` : ''}
-            ${tokens ? ` · ${tokens}` : ''}
-          </div>
-        </div>
-        <button class="btn btn-xs btn-ghost opacity-40 hover:opacity-100 insight-delete-btn" data-id="${insight.id}" title="Delete insight">
-          <i data-lucide="trash-2" class="w-3 h-3"></i>
-        </button>
+    return `<div class="insight-item px-3 py-2.5 ${isActive ? 'active' : ''}" data-id="${insight.id}">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-xs font-medium truncate">${esc(insight.userId)}</span>
+        <span class="text-[10px] opacity-40 truncate">${esc(repo)}</span>
       </div>
-      <div class="insight-content text-xs">${contentHtml}</div>
+      <div class="text-[10px] opacity-60 line-clamp-2 leading-snug mb-1">${esc(preview)}</div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-[10px] opacity-30">${time}</span>
+        <span class="text-[10px] opacity-30">·</span>
+        <span class="text-[10px] opacity-30">${sessions}s ${events}e</span>
+        ${categories}
+      </div>
     </div>`
   }).join('')
 
-  // Re-init lucide icons for the new elements
-  lucide.createIcons()
+  insightsList.innerHTML = listHtml
 
-  // Delete button handlers
-  insightsList.querySelectorAll('.insight-delete-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation()
-      const id = btn.dataset.id
-      try {
-        await fetch(`/api/insights/${id}`, { method: 'DELETE', credentials: 'include' })
-        insights = insights.filter(i => i.id !== id)
-        renderInsights()
-      } catch (err) {
-        console.error('Failed to delete insight:', err)
-      }
+  // Add click handlers
+  insightsList.querySelectorAll('.insight-item').forEach(el => {
+    el.addEventListener('click', () => {
+      selectInsight(el.dataset.id)
     })
   })
+
+  // Re-init lucide icons
+  lucide.createIcons()
+
+  // Re-select current insight if still in list
+  if (selectedInsightId && filtered.find(i => i.id === selectedInsightId)) {
+    renderInsightDetail(selectedInsightId)
+  } else if (filtered.length > 0) {
+    // Auto-select first if none selected
+    selectInsight(filtered[0].id)
+  }
+}
+
+function selectInsight(id) {
+  selectedInsightId = id
+
+  // Update active state in list
+  insightsList.querySelectorAll('.insight-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id)
+  })
+
+  renderInsightDetail(id)
+}
+
+function renderInsightDetail(id) {
+  const insight = insights.find(i => i.id === id)
+  if (!insight) {
+    hideInsightDetail()
+    return
+  }
+
+  insightsDetailEmpty.classList.add('hidden')
+  insightsDetail.classList.remove('hidden')
+
+  // Header info
+  insightDetailUser.textContent = insight.userId
+  insightDetailRepo.textContent = insight.repoName || 'All repositories'
+
+  // Meta info
+  const time = new Date(insight.createdAt).toLocaleString()
+  const sessions = insight.sessionsAnalyzed || 0
+  const events = insight.eventsAnalyzed || 0
+  const meta = insight.meta || {}
+  const tokens = meta.tokenUsage
+    ? `${(meta.tokenUsage.inputTokens + meta.tokenUsage.outputTokens).toLocaleString()} tokens`
+    : ''
+  const duration = meta.durationMs ? `${(meta.durationMs / 1000).toFixed(1)}s` : ''
+  const model = meta.model || ''
+
+  const metaParts = [time, `${sessions} sessions`, `${events} events`]
+  if (model) metaParts.push(model)
+  if (duration) metaParts.push(duration)
+  if (tokens) metaParts.push(tokens)
+  insightDetailMeta.textContent = metaParts.join(' · ')
+
+  // Content
+  insightDetailContent.innerHTML = markdownToHtml(insight.content || 'No content')
+
+  // Delete button handler
+  insightDetailDelete.onclick = async () => {
+    if (!confirm('Delete this insight?')) return
+    try {
+      await fetch(`/api/insights/${id}`, { method: 'DELETE', credentials: 'include' })
+      insights = insights.filter(i => i.id !== id)
+      selectedInsightId = null
+      renderInsights()
+    } catch (err) {
+      console.error('Failed to delete insight:', err)
+    }
+  }
+
+  lucide.createIcons()
+}
+
+function hideInsightDetail() {
+  insightsDetailEmpty.classList.remove('hidden')
+  insightsDetail.classList.add('hidden')
+  selectedInsightId = null
 }
 
 // Basic markdown to HTML converter
 function markdownToHtml(md) {
   if (!md) return ''
-  return md
+
+  // Process line by line for better control
+  const lines = md.split('\n')
+  const result = []
+  let inList = false
+
+  for (let line of lines) {
     // Headers
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Lists
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    if (line.startsWith('### ')) {
+      if (inList) { result.push('</ul>'); inList = false }
+      result.push(`<h3>${esc(line.slice(4))}</h3>`)
+      continue
+    }
+    if (line.startsWith('## ')) {
+      if (inList) { result.push('</ul>'); inList = false }
+      result.push(`<h2>${esc(line.slice(3))}</h2>`)
+      continue
+    }
+    if (line.startsWith('# ')) {
+      if (inList) { result.push('</ul>'); inList = false }
+      result.push(`<h1>${esc(line.slice(2))}</h1>`)
+      continue
+    }
+
     // Horizontal rule
-    .replace(/^---$/gm, '<hr>')
-    // Paragraphs (lines that aren't already HTML)
-    .replace(/^([^<\n].+)$/gm, '<p>$1</p>')
-    // Clean up extra newlines
-    .replace(/\n{2,}/g, '\n')
+    if (line.trim() === '---') {
+      if (inList) { result.push('</ul>'); inList = false }
+      result.push('<hr>')
+      continue
+    }
+
+    // List items
+    if (line.startsWith('- ')) {
+      if (!inList) { result.push('<ul>'); inList = true }
+      const content = formatInlineMarkdown(line.slice(2))
+      result.push(`<li>${content}</li>`)
+      continue
+    }
+
+    // Empty line
+    if (line.trim() === '') {
+      if (inList) { result.push('</ul>'); inList = false }
+      continue
+    }
+
+    // Regular paragraph
+    if (inList) { result.push('</ul>'); inList = false }
+    const content = formatInlineMarkdown(line)
+    result.push(`<p>${content}</p>`)
+  }
+
+  if (inList) result.push('</ul>')
+
+  return result.join('\n')
+}
+
+// Format inline markdown (bold, italic, code)
+function formatInlineMarkdown(text) {
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
 }
 
 // Socket.IO: Listen for new insights
