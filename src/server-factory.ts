@@ -4,6 +4,8 @@ import { initDb, listSessions, getSessionEventCount } from './db'
 import { createRouter } from './routes'
 import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
 import { createInsightScheduler, type InsightScheduler } from './insights'
+import { createSlackBot, type SlackBot } from './slack'
+import { getIntegrationConfig } from './db/slack'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -21,6 +23,8 @@ type ServerOptions = {
   insightsEnabled?: boolean
   /** Run insight analysis immediately on start (default: false) */
   insightsRunOnStart?: boolean
+  /** Enable Slack bot integration (default: check env/db config) */
+  slackEnabled?: boolean
 }
 
 // Files accessible without authentication
@@ -34,6 +38,7 @@ export function createServer(options: ServerOptions = {}) {
     authEnabled = true,
     insightsEnabled = process.env.NODE_ENV === 'production',
     insightsRunOnStart = false,
+    slackEnabled,
   } = options
 
   const resolvedDbPath = dbPath ?? process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
@@ -54,7 +59,6 @@ export function createServer(options: ServerOptions = {}) {
   const engine = new Engine({ path: '/socket.io/' })
   io.bind(engine)
 
-  const router = createRouter(io)
   const engineHandler = engine.handler()
   const publicDir = path.join(import.meta.dir, '..', 'public')
 
@@ -102,6 +106,57 @@ export function createServer(options: ServerOptions = {}) {
       runOnStart: insightsRunOnStart,
     })
   }
+
+  // Slack bot integration
+  let slackBot: SlackBot | null = null
+
+  function getSlackConfig(): { botToken: string; appToken: string; channel: string } | null {
+    // Check DB config first, then fall back to env vars
+    const dbConfig = getIntegrationConfig('slack')
+    if (dbConfig) {
+      const c = dbConfig.config as Record<string, string>
+      if (c.botToken && c.appToken) return { botToken: c.botToken, appToken: c.appToken, channel: c.channel || '' }
+    }
+    const botToken = process.env.SLACK_BOT_TOKEN
+    const appToken = process.env.SLACK_APP_TOKEN
+    if (botToken && appToken) {
+      return { botToken, appToken, channel: process.env.SLACK_CHANNEL || '' }
+    }
+    return null
+  }
+
+  async function startSlackBot(config: { botToken: string; appToken: string; channel: string }) {
+    if (slackBot) {
+      try { await slackBot.stop() } catch {}
+    }
+    slackBot = createSlackBot({ ...config, io })
+    try {
+      await slackBot.start()
+    } catch (err) {
+      console.error('Failed to start Slack bot:', err)
+      slackBot = null
+    }
+  }
+
+  async function restartSlackBot(config: { botToken: string; appToken: string; channel: string }) {
+    await startSlackBot(config)
+  }
+
+  // Determine if Slack should be enabled
+  const shouldEnableSlack = slackEnabled ?? (process.env.SLACK_ENABLED === 'true' || !!getSlackConfig())
+  if (shouldEnableSlack) {
+    const config = getSlackConfig()
+    if (config) {
+      startSlackBot(config).catch(err => console.error('Slack bot startup error:', err))
+    }
+  }
+
+  const slackBotRef = {
+    get bot() { return slackBot },
+    restart: restartSlackBot,
+  }
+
+  const router = createRouter(io, slackBotRef)
 
   function serveHtml(filePath: string) {
     const file = Bun.file(filePath)
@@ -234,9 +289,13 @@ export function createServer(options: ServerOptions = {}) {
     io,
     auth,
     insightScheduler,
+    slackBot: slackBotRef,
     url: `http://localhost:${server.port}`,
-    close: () => {
+    close: async () => {
       insightScheduler?.stop()
+      if (slackBot) {
+        try { await slackBot.stop() } catch {}
+      }
       io.close()
       server.stop(true)
     },

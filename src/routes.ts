@@ -5,8 +5,10 @@ import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
 import { addEvent, getSession, getSessionEvents, getSessionEventsPaginated, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, archiveSession, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
 import { listInsights, getInsight, deleteInsight } from './db/insights'
+import { addQuestion, getQuestion, listQuestions, updateQuestionAnswer, getIntegrationConfig, setIntegrationConfig } from './db/slack'
 import { createAuth, migrateAuth } from './auth'
-import type { IngestPayload } from './types'
+import type { IngestPayload, CreateSlackQuestionInput } from './types'
+import type { SlackBot } from './slack'
 
 function expandPath(p: string): string {
   if (p.startsWith('~/')) return resolve(homedir(), p.slice(2))
@@ -42,7 +44,7 @@ function json(data: unknown, status = 200) {
   })
 }
 
-export function createRouter(io: SocketIOServer) {
+export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }) {
   return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
@@ -468,6 +470,126 @@ export const AgentFlowPlugin = async () => {
       }
     }
 
+    // --- Slack Questions API ---
+
+    // POST /api/slack/questions — create + post question
+    if (req.method === 'POST' && pathname === '/api/slack/questions') {
+      try {
+        const input = (await req.json()) as CreateSlackQuestionInput
+        if (!input.question) return json({ error: 'Missing required field: question' }, 400)
+        const question = addQuestion(input)
+        // Post to Slack if bot is connected
+        if (slackBot?.bot?.isConnected()) {
+          const posted = await slackBot.bot.postQuestion(question.id)
+          if (posted) return json(posted)
+        }
+        return json(question)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create question' }, 500)
+      }
+    }
+
+    // GET /api/slack/questions — list questions
+    if (req.method === 'GET' && pathname === '/api/slack/questions') {
+      const status = url.searchParams.get('status') || undefined
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+      return json(listQuestions({ status, limit, offset }))
+    }
+
+    // POST /api/slack/questions/:id/answer — manually answer via API
+    if (req.method === 'POST' && pathname.match(/^\/api\/slack\/questions\/[^/]+\/answer$/)) {
+      const id = pathname.replace('/api/slack/questions/', '').replace('/answer', '')
+      const question = getQuestion(id)
+      if (!question) return json({ error: 'Question not found' }, 404)
+      if (question.status === 'answered') return json({ error: 'Already answered' }, 400)
+      try {
+        const body = (await req.json()) as { answer: string; selectedOption?: string }
+        if (!body.answer) return json({ error: 'Missing required field: answer' }, 400)
+        updateQuestionAnswer(id, {
+          answer: body.answer,
+          answeredBy: userId || 'api',
+          answerSource: 'api',
+          selectedOption: body.selectedOption,
+        })
+        const updated = getQuestion(id)
+        if (updated) io.emit('slack:question:answered', updated)
+        return json(updated)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to answer question' }, 500)
+      }
+    }
+
+    // GET /api/slack/questions/:id — get single question
+    if (req.method === 'GET' && pathname.match(/^\/api\/slack\/questions\/[^/]+$/)) {
+      const id = pathname.replace('/api/slack/questions/', '')
+      const question = getQuestion(id)
+      if (!question) return json({ error: 'Question not found' }, 404)
+      return json(question)
+    }
+
+    // --- Integration Config API ---
+
+    // GET /api/integrations/slack — get config (tokens masked)
+    if (req.method === 'GET' && pathname === '/api/integrations/slack') {
+      const config = getIntegrationConfig('slack')
+      if (!config) return json({ configured: false })
+      const c = config.config as Record<string, string>
+      return json({
+        configured: true,
+        botToken: c.botToken ? maskToken(c.botToken) : null,
+        appToken: c.appToken ? maskToken(c.appToken) : null,
+        channel: c.channel || null,
+        connected: slackBot?.bot?.isConnected() || false,
+      })
+    }
+
+    // POST /api/integrations/slack — save config, (re)start bot
+    if (req.method === 'POST' && pathname === '/api/integrations/slack') {
+      try {
+        const body = (await req.json()) as { botToken?: string; appToken?: string; channel?: string }
+        // Merge with existing config — only overwrite provided fields
+        const existing = getIntegrationConfig('slack')
+        const prev = (existing?.config || {}) as Record<string, string>
+        const config = {
+          botToken: body.botToken && !body.botToken.includes('•') ? body.botToken : prev.botToken || '',
+          appToken: body.appToken && !body.appToken.includes('•') ? body.appToken : prev.appToken || '',
+          channel: body.channel || prev.channel || '',
+        }
+        setIntegrationConfig('slack', config)
+
+        // Restart bot with new config
+        if (config.botToken && config.appToken && slackBot) {
+          await slackBot.restart(config)
+        }
+
+        return json({ ok: true, connected: slackBot?.bot?.isConnected() || false })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to save config' }, 500)
+      }
+    }
+
+    // POST /api/integrations/slack/test — test connection
+    if (req.method === 'POST' && pathname === '/api/integrations/slack/test') {
+      if (slackBot?.bot) {
+        const result = await slackBot.bot.testConnection()
+        return json(result)
+      }
+      return json({ ok: false, error: 'Bot not configured' })
+    }
+
+    // GET /api/integrations/slack/status — get bot connection status
+    if (req.method === 'GET' && pathname === '/api/integrations/slack/status') {
+      return json({ connected: slackBot?.bot?.isConnected() || false })
+    }
+
     return null // Not handled
   }
+}
+
+function maskToken(token: string): string {
+  if (!token || token.length < 8) return '••••'
+  const prefix = token.slice(0, token.indexOf('-') + 1) || token.slice(0, 4)
+  const last4 = token.slice(-4)
+  return `${prefix}${'•'.repeat(8)}${last4}`
 }

@@ -10,7 +10,7 @@ let selectedSessionIdx = -1
 let selectedEventIdx = -1
 let displayRows = []
 let focusArea = 'sessions' // 'sessions' | 'events'
-let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights'
+let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // Virtual scrolling constants
@@ -79,12 +79,18 @@ const insightDetailMeta = document.getElementById('insight-detail-meta')
 const insightDetailContent = document.getElementById('insight-detail-content')
 const insightDetailDelete = document.getElementById('insight-detail-delete')
 
+// Integrations DOM
+const integrationsView = document.getElementById('integrations-view')
+const btnIntegrations = document.getElementById('btn-integrations')
+const integrationsBack = document.getElementById('integrations-back')
+
 // --- View switching ---
 function switchView(view) {
   currentView = view
   bubbleView.classList.add('hidden')
   listView.classList.add('hidden')
   insightsView.classList.add('hidden')
+  integrationsView.classList.add('hidden')
 
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
@@ -95,11 +101,16 @@ function switchView(view) {
     insightsView.classList.remove('hidden')
     if (!insightsLoaded) loadInsights()
     else renderInsights()
+  } else if (view === 'integrations') {
+    integrationsView.classList.remove('hidden')
+    loadSlackConfig()
   }
 }
 
 btnTitle.addEventListener('click', () => switchView('bubbles'))
 btnInsights.addEventListener('click', () => switchView('insights'))
+btnIntegrations.addEventListener('click', () => switchView('integrations'))
+integrationsBack.addEventListener('click', () => switchView('bubbles'))
 insightsBack.addEventListener('click', () => switchView('bubbles'))
 
 // --- User filter ---
@@ -1405,41 +1416,43 @@ document.getElementById('bubble-scroll').addEventListener('click', (e) => {
 
 // --- Bubble hover tooltip ---
 const bubbleTooltip = document.getElementById('bubble-tooltip')
-let tooltipTimer = null
+let tooltipHoveredBubble = null
 const bubbleScrollEl = document.getElementById('bubble-scroll')
 
-bubbleScrollEl.addEventListener('mouseenter', (e) => {
-  const bubble = e.target.closest('.agent-bubble')
-  if (!bubble) return
+function showBubbleTooltip(bubble) {
   const sid = bubble.dataset.sid
   const session = sessions.find(s => s.id === sid)
-  if (!session || !session.lastEventText) return
-  clearTimeout(tooltipTimer)
-  bubbleTooltip.textContent = session.lastEventText
+  if (!session) return
+  const text = session.lastEventText || formatSessionLastEvent(session.lastEventType) || ''
+  if (!text) return
+  tooltipHoveredBubble = bubble
+  bubbleTooltip.textContent = text
   const rect = bubble.getBoundingClientRect()
   bubbleTooltip.style.left = rect.left + 'px'
   bubbleTooltip.style.top = (rect.bottom + 6) + 'px'
-  // Clamp to viewport
   bubbleTooltip.classList.add('visible')
   requestAnimationFrame(() => {
     const tr = bubbleTooltip.getBoundingClientRect()
     if (tr.right > window.innerWidth - 8) bubbleTooltip.style.left = (window.innerWidth - tr.width - 8) + 'px'
     if (tr.bottom > window.innerHeight - 8) bubbleTooltip.style.top = (rect.top - tr.height - 6) + 'px'
   })
-}, true)
+}
 
-bubbleScrollEl.addEventListener('mouseleave', (e) => {
-  const bubble = e.target.closest('.agent-bubble')
-  if (!bubble) return
-  tooltipTimer = setTimeout(() => bubbleTooltip.classList.remove('visible'), 100)
-}, true)
+function hideBubbleTooltip() {
+  tooltipHoveredBubble = null
+  bubbleTooltip.classList.remove('visible')
+}
 
 bubbleScrollEl.addEventListener('mousemove', (e) => {
-  if (!bubbleTooltip.classList.contains('visible')) return
-  if (!e.target.closest('.agent-bubble')) {
-    bubbleTooltip.classList.remove('visible')
+  const bubble = e.target.closest('.agent-bubble')
+  if (bubble) {
+    if (bubble !== tooltipHoveredBubble) showBubbleTooltip(bubble)
+  } else if (tooltipHoveredBubble) {
+    hideBubbleTooltip()
   }
 })
+
+bubbleScrollEl.addEventListener('mouseleave', () => hideBubbleTooltip())
 
 // --- Stale session cleanup (client-side) ---
 setInterval(() => {
@@ -1595,7 +1608,7 @@ function renderInsights() {
     return
   }
 
-  // Build list items
+  // Build list items — compact single-line HN style
   const listHtml = filtered.map(insight => {
     const time = timeAgo(insight.createdAt)
     const sessions = insight.sessionsAnalyzed || 0
@@ -1605,31 +1618,27 @@ function renderInsights() {
     // Extract summary from content (first non-empty line after ## Summary)
     const summaryMatch = insight.content?.match(/## Summary\n+([^\n#]+)/)
     const summary = summaryMatch ? summaryMatch[1].trim() : ''
-    const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 100)
+    const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 120)
 
-    // Categories badges
-    const categories = (insight.categories || []).slice(0, 2).map(c => {
-      const isError = c === 'high-frustration'
-      return `<span class="insight-badge ${isError ? 'insight-badge-error' : ''} px-1.5 py-0.5 rounded text-[9px]">${esc(c.replace(/-/g, ' '))}</span>`
-    }).join('')
+    // Top category badge (only show first one)
+    const topCat = (insight.categories || [])[0]
+    const badge = topCat
+      ? `<span class="insight-badge ${topCat === 'high-frustration' ? 'insight-badge-error' : ''} px-1.5 py-0.5 rounded text-[9px]">${esc(topCat.replace(/-/g, ' '))}</span>`
+      : ''
 
-    return `<div class="insight-item px-3 py-3 ${isActive ? 'active' : ''}" data-id="${insight.id}">
-      <div class="flex items-center gap-2 mb-1.5">
-        <span class="insight-user text-xs truncate">${esc(insight.userId)}</span>
-        <span class="insight-meta text-[10px]">${time}</span>
+    return `<div class="insight-item-compact ${isActive ? 'active' : ''}" data-id="${insight.id}">
+      <div class="flex items-center gap-2 min-w-0">
+        ${badge}
+        <span class="insight-preview-compact truncate">${esc(preview)}</span>
       </div>
-      <div class="insight-preview text-[11px] line-clamp-2 mb-2">${esc(preview)}</div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="insight-meta text-[10px]">${sessions} sessions · ${events} events</span>
-        ${categories}
-      </div>
+      <span class="insight-meta-compact shrink-0">${sessions}s · ${events}e · ${time}</span>
     </div>`
   }).join('')
 
   insightsList.innerHTML = listHtml
 
   // Add click handlers
-  insightsList.querySelectorAll('.insight-item').forEach(el => {
+  insightsList.querySelectorAll('.insight-item-compact').forEach(el => {
     el.addEventListener('click', () => {
       selectInsight(el.dataset.id)
     })
@@ -1651,7 +1660,7 @@ function selectInsight(id) {
   selectedInsightId = id
 
   // Update active state in list
-  insightsList.querySelectorAll('.insight-item').forEach(el => {
+  insightsList.querySelectorAll('.insight-item-compact').forEach(el => {
     el.classList.toggle('active', el.dataset.id === id)
   })
 
@@ -1694,8 +1703,29 @@ function renderInsightDetail(id) {
   if (tokens) metaParts.push(`<span>${tokens}</span>`)
   insightDetailMeta.innerHTML = metaParts.join('<span class="opacity-30">·</span>')
 
-  // Content
-  insightDetailContent.innerHTML = markdownToHtml(insight.content || 'No content')
+  // Content — render action items first, then reasoning as collapsible
+  const content = insight.content || 'No content'
+  const actions = (insight.followUpActions || [])
+
+  let detailHtml = ''
+
+  // Action items section (from structured data)
+  if (actions.length > 0) {
+    detailHtml += '<div class="insight-actions-section">'
+    detailHtml += '<h2>Action Items</h2><ul>'
+    for (const a of actions) {
+      const dot = a.priority === 'high' ? '🔴' : a.priority === 'medium' ? '🟡' : '🟢'
+      detailHtml += `<li>${dot} <strong>[${esc(a.category)}]</strong> ${esc(a.action)}</li>`
+    }
+    detailHtml += '</ul></div>'
+  }
+
+  // Reasoning / full analysis as collapsible
+  detailHtml += '<details class="insight-reasoning-details"><summary>Analysis Details</summary>'
+  detailHtml += '<div class="insight-reasoning-body">' + markdownToHtml(content) + '</div>'
+  detailHtml += '</details>'
+
+  insightDetailContent.innerHTML = detailHtml
 
   // Delete button handler
   insightDetailDelete.onclick = async () => {
@@ -1800,6 +1830,129 @@ socket.on('insight:deleted', (id) => {
   if (currentView === 'insights') {
     renderInsights()
   }
+})
+
+// --- Integrations: Slack config ---
+const slackBotTokenInput = document.getElementById('slack-bot-token')
+const slackAppTokenInput = document.getElementById('slack-app-token')
+const slackChannelInput = document.getElementById('slack-channel')
+const slackSaveBtn = document.getElementById('slack-save-btn')
+const slackTestBtn = document.getElementById('slack-test-btn')
+const slackSaveStatus = document.getElementById('slack-save-status')
+const slackStatusDot = document.getElementById('slack-status-dot')
+const slackStatusText = document.getElementById('slack-status-text')
+const slackToggleBotToken = document.getElementById('slack-toggle-bot-token')
+const slackToggleAppToken = document.getElementById('slack-toggle-app-token')
+
+function toggleTokenVisibility(input, btn) {
+  if (input.type === 'password') {
+    input.type = 'text'
+    btn.innerHTML = '<i data-lucide="eye-off" class="w-3.5 h-3.5"></i>'
+  } else {
+    input.type = 'password'
+    btn.innerHTML = '<i data-lucide="eye" class="w-3.5 h-3.5"></i>'
+  }
+  lucide.createIcons()
+}
+
+slackToggleBotToken.addEventListener('click', () => toggleTokenVisibility(slackBotTokenInput, slackToggleBotToken))
+slackToggleAppToken.addEventListener('click', () => toggleTokenVisibility(slackAppTokenInput, slackToggleAppToken))
+
+function setSlackStatus(connected) {
+  if (connected) {
+    slackStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-success'
+    slackStatusText.textContent = 'Connected'
+    slackStatusText.className = 'text-[10px] text-success'
+  } else {
+    slackStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-base-300'
+    slackStatusText.textContent = 'Not connected'
+    slackStatusText.className = 'text-[10px] opacity-50'
+  }
+}
+
+function showSlackSaveStatus(msg, isError) {
+  slackSaveStatus.textContent = msg
+  slackSaveStatus.className = `text-xs ${isError ? 'text-error' : 'text-success'}`
+  slackSaveStatus.classList.remove('hidden')
+  setTimeout(() => slackSaveStatus.classList.add('hidden'), 4000)
+}
+
+async function loadSlackConfig() {
+  try {
+    const res = await fetch('/api/integrations/slack', { credentials: 'include' })
+    const data = await res.json()
+    if (data.configured) {
+      slackBotTokenInput.value = data.botToken || ''
+      slackAppTokenInput.value = data.appToken || ''
+      slackChannelInput.value = data.channel || ''
+      setSlackStatus(data.connected)
+    } else {
+      slackBotTokenInput.value = ''
+      slackAppTokenInput.value = ''
+      slackChannelInput.value = ''
+      setSlackStatus(false)
+    }
+  } catch {
+    setSlackStatus(false)
+  }
+}
+
+slackSaveBtn.addEventListener('click', async () => {
+  slackSaveBtn.disabled = true
+  slackSaveBtn.textContent = 'Saving...'
+  try {
+    const res = await fetch('/api/integrations/slack', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        botToken: slackBotTokenInput.value.trim(),
+        appToken: slackAppTokenInput.value.trim(),
+        channel: slackChannelInput.value.trim(),
+      }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      showSlackSaveStatus('Saved successfully' + (data.connected ? ' — Connected!' : ''), false)
+      setSlackStatus(data.connected)
+      // Reload to get masked tokens
+      await loadSlackConfig()
+    } else {
+      showSlackSaveStatus(data.error || 'Failed to save', true)
+    }
+  } catch (err) {
+    showSlackSaveStatus('Network error', true)
+  }
+  slackSaveBtn.disabled = false
+  slackSaveBtn.textContent = 'Save'
+})
+
+slackTestBtn.addEventListener('click', async () => {
+  slackTestBtn.disabled = true
+  slackTestBtn.textContent = 'Testing...'
+  try {
+    const res = await fetch('/api/integrations/slack/test', {
+      method: 'POST',
+      credentials: 'include',
+    })
+    const data = await res.json()
+    if (data.ok) {
+      showSlackSaveStatus(`Connection OK — Team: ${data.team}, Bot: ${data.user}`, false)
+      setSlackStatus(true)
+    } else {
+      showSlackSaveStatus(data.error || 'Connection failed', true)
+      setSlackStatus(false)
+    }
+  } catch {
+    showSlackSaveStatus('Network error', true)
+  }
+  slackTestBtn.disabled = false
+  slackTestBtn.textContent = 'Test Connection'
+})
+
+// Listen for slack status events
+socket.on('slack:status', ({ connected }) => {
+  if (currentView === 'integrations') setSlackStatus(connected)
 })
 
 // --- Theme switcher ---

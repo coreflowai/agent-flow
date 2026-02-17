@@ -82,35 +82,34 @@
     .session-item:hover .archive-btn, .agent-bubble:hover .archive-btn { opacity: 0.5; }
     .archive-btn:hover { opacity: 1 !important; }
 
-    /* Insight list items */
-    .insight-item {
+    /* Insight list items — compact single-line */
+    .insight-item-compact {
       cursor: pointer; outline: none; transition: all 0.15s ease;
       border-left: 3px solid transparent;
       border-bottom: 1px solid var(--color-base-300);
+      padding: 6px 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
-    .insight-item:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
-    .insight-item.active {
+    .insight-item-compact:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
+    .insight-item-compact.active {
       background: color-mix(in oklch, var(--color-primary) 10%, transparent);
       border-left-color: var(--color-primary);
     }
-    .insight-item .insight-user {
-      font-weight: 600;
-      color: var(--color-base-content);
+    .insight-item-compact .insight-preview-compact {
+      font-size: 12px; line-height: 1.4;
+      color: color-mix(in oklch, var(--color-base-content) 80%, transparent);
     }
-    .insight-item .insight-preview {
-      color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
-      line-height: 1.5;
+    .insight-item-compact .insight-meta-compact {
+      font-size: 10px; white-space: nowrap;
+      color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
     }
-    .insight-item .insight-meta {
-      color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
-    }
-    .insight-item .insight-badge {
+    .insight-item-compact .insight-badge {
       background: var(--color-base-300);
       color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
       border: 1px solid var(--color-base-300);
-      font-weight: 500;
+      font-weight: 500; white-space: nowrap;
     }
-    .insight-item .insight-badge-error {
+    .insight-item-compact .insight-badge-error {
       background: color-mix(in oklch, var(--color-error) 15%, transparent);
       color: var(--color-error);
       border-color: color-mix(in oklch, var(--color-error) 30%, transparent);
@@ -147,6 +146,41 @@
       font-size: 13px; border: 1px solid var(--color-base-300);
     }
     .insight-content > h2:first-child { margin-top: 0; }
+
+    /* Action items section at top of detail */
+    .insight-actions-section { margin-bottom: 16px; }
+    .insight-actions-section h2 {
+      font-size: 16px; font-weight: 600; margin-bottom: 12px;
+      color: var(--color-base-content); letter-spacing: -0.01em;
+      padding-bottom: 8px; border-bottom: 1px solid var(--color-base-300);
+    }
+    .insight-actions-section ul { margin-left: 20px; margin-bottom: 8px; }
+    .insight-actions-section li { margin-bottom: 6px; font-size: 14px; line-height: 1.6; }
+    .insight-actions-section strong { font-weight: 600; color: var(--color-base-content); }
+
+    /* Collapsible reasoning details */
+    .insight-reasoning-details {
+      border: 1px solid var(--color-base-300); border-radius: 8px;
+      overflow: hidden;
+    }
+    .insight-reasoning-details summary {
+      cursor: pointer; padding: 10px 16px;
+      font-size: 13px; font-weight: 500;
+      color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+      background: color-mix(in oklch, var(--color-base-300) 30%, transparent);
+      user-select: none; list-style: none;
+    }
+    .insight-reasoning-details summary::-webkit-details-marker { display: none; }
+    .insight-reasoning-details summary::before {
+      content: '▸ '; font-size: 11px; margin-right: 4px;
+    }
+    .insight-reasoning-details[open] summary::before {
+      content: '▾ ';
+    }
+    .insight-reasoning-details summary:hover {
+      color: var(--color-base-content);
+    }
+    .insight-reasoning-body { padding: 16px; }
     .insight-content ul ul, .insight-content ol ol { margin-top: 8px; margin-bottom: 0; }
     .insight-content blockquote {
       border-left: 3px solid var(--color-base-300); padding-left: 16px;
@@ -198,6 +232,11 @@
       /* Help dialog tabs: horizontal scroll */
       #setup-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
       #setup-tabs button { flex-shrink: 0; }
+
+      /* Integrations: full-width on mobile */
+      #integrations-sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+      #integrations-sidebar.mobile-hidden { display: none !important; }
+      #integrations-main.mobile-hidden { display: none !important; }
     }
   </style>
 </head>
@@ -212,6 +251,9 @@
       <span id="connection-dot" class="inline-block w-2 h-2 rounded-full bg-base-300" title="connecting..."></span>
       <button id="btn-insights" class="btn btn-xs btn-ghost" title="View insights (i)">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+      </button>
+      <button id="btn-integrations" class="btn btn-xs btn-ghost" title="Integrations">
+        <i data-lucide="plug" class="w-3.5 h-3.5"></i>
       </button>
       <div class="dropdown dropdown-end">
         <button tabindex="0" class="btn btn-xs btn-ghost" title="Switch theme">
@@ -399,6 +441,84 @@
       </div>
     </div>
   </div> <!-- /insights-view -->
+
+  <!-- Integrations View -->
+  <div id="integrations-view" class="h-[calc(100vh-2.5rem)] flex hidden">
+    <!-- Integrations Sidebar -->
+    <div id="integrations-sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:220px;min-width:150px;max-width:40vw;">
+      <div class="px-3 py-2 border-b border-base-300 flex items-center gap-2">
+        <button id="integrations-back" class="btn btn-xs btn-ghost opacity-60" title="Back to sessions">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        </button>
+        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Integrations</span>
+      </div>
+      <div class="flex-1 overflow-y-auto">
+        <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-primary bg-base-200/50 flex items-center gap-2" data-integration="slack">
+          <svg width="16" height="16" viewBox="0 0 127 127" fill="none"><path d="M27.2 80a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 0 80a13.6 13.6 0 0 1 13.6-13.6h13.6V80zm6.8 0a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6v34a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 34 114V80z" fill="#E01E5A"/><path d="M47.6 27.2A13.6 13.6 0 0 1 34 13.6 13.6 13.6 0 0 1 47.6 0 13.6 13.6 0 0 1 61.2 13.6v13.6H47.6zm0 6.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H13.6A13.6 13.6 0 0 1 0 47.6 13.6 13.6 0 0 1 13.6 34h34z" fill="#36C5F0"/><path d="M99.8 47.6a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H99.8V47.6zm-6.8 0a13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V13.6A13.6 13.6 0 0 1 79.4 0 13.6 13.6 0 0 1 93 13.6v34z" fill="#2EB67D"/><path d="M79.4 99.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V99.8h13.6zm0-6.8a13.6 13.6 0 0 1-13.6-13.6A13.6 13.6 0 0 1 79.4 66h34a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.4H79.4z" fill="#ECB22E"/></svg>
+          <span class="text-xs font-medium">Slack</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Integrations Main Panel -->
+    <div id="integrations-main" class="flex-1 overflow-y-auto">
+      <div class="max-w-2xl mx-auto px-5 sm:px-8 py-6">
+        <!-- Status -->
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-base font-semibold">Slack Integration</h2>
+          <div id="slack-status-badge" class="flex items-center gap-1.5">
+            <span id="slack-status-dot" class="inline-block w-2 h-2 rounded-full bg-base-300"></span>
+            <span id="slack-status-text" class="text-[10px] opacity-50">Not configured</span>
+          </div>
+        </div>
+
+        <!-- Config Form -->
+        <div class="space-y-4 mb-6">
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Bot Token</label>
+            <div class="flex gap-2">
+              <input type="password" id="slack-bot-token" class="input input-sm input-bordered flex-1 text-xs font-mono" placeholder="xoxb-..." />
+              <button id="slack-toggle-bot-token" class="btn btn-xs btn-ghost opacity-50" title="Toggle visibility">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5 font-medium">App Token</label>
+            <div class="flex gap-2">
+              <input type="password" id="slack-app-token" class="input input-sm input-bordered flex-1 text-xs font-mono" placeholder="xapp-..." />
+              <button id="slack-toggle-app-token" class="btn btn-xs btn-ghost opacity-50" title="Toggle visibility">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Default Channel</label>
+            <input type="text" id="slack-channel" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="C0123456789 or #channel-name" />
+          </div>
+          <div class="flex gap-2">
+            <button id="slack-save-btn" class="btn btn-sm btn-primary text-xs">Save</button>
+            <button id="slack-test-btn" class="btn btn-sm btn-ghost text-xs">Test Connection</button>
+          </div>
+          <div id="slack-save-status" class="text-xs hidden"></div>
+        </div>
+
+        <!-- Setup Guide -->
+        <div class="border-t border-base-300 pt-6">
+          <h3 class="text-sm font-semibold mb-3 opacity-70">Setup Guide</h3>
+          <ol class="text-xs opacity-60 space-y-2 list-decimal pl-5 leading-relaxed">
+            <li>Create a new app at <a href="https://api.slack.com/apps" target="_blank" class="underline">api.slack.com/apps</a> (choose "From scratch")</li>
+            <li>Go to <strong>Socket Mode</strong> &rarr; Enable &rarr; generates an <code class="bg-base-200 px-1 rounded">xapp-</code> token</li>
+            <li>Go to <strong>OAuth &amp; Permissions</strong> &rarr; add Bot Token Scopes: <code class="bg-base-200 px-1 rounded">chat:write</code>, <code class="bg-base-200 px-1 rounded">reactions:write</code>, <code class="bg-base-200 px-1 rounded">users:read</code></li>
+            <li>Go to <strong>Event Subscriptions</strong> &rarr; Enable &rarr; Subscribe to: <code class="bg-base-200 px-1 rounded">message.channels</code>, <code class="bg-base-200 px-1 rounded">message.groups</code></li>
+            <li>Enable <strong>Interactivity &amp; Shortcuts</strong> (no URL needed in Socket Mode)</li>
+            <li>Install app to workspace &rarr; copy <code class="bg-base-200 px-1 rounded">xoxb-</code> Bot Token</li>
+            <li>Invite the bot to the channel you want to use</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div> <!-- /integrations-view -->
 
   <!-- Invite Dialog -->
   <dialog id="invite-dialog" class="modal">

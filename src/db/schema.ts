@@ -58,6 +58,39 @@ export const insights = sqliteTable('insights', {
   index('idx_insights_repo').on(table.repoName, table.createdAt),
 ])
 
+// Slack questions for human-in-the-loop
+export const slackQuestions = sqliteTable('slack_questions', {
+  id: text('id').primaryKey(),
+  question: text('question').notNull(),
+  context: text('context'),
+  status: text('status').notNull().default('pending'),    // pending | posted | answered | expired
+  channelId: text('channel_id'),
+  messageTs: text('message_ts'),
+  threadTs: text('thread_ts'),
+  answer: text('answer'),
+  answeredBy: text('answered_by'),
+  answeredByName: text('answered_by_name'),
+  answeredAt: integer('answered_at'),
+  answerSource: text('answer_source'),                    // thread | button | api
+  options: text('options', { mode: 'json' }),              // SlackQuestionOption[]
+  selectedOption: text('selected_option'),
+  insightId: text('insight_id'),
+  sessionId: text('session_id'),
+  createdAt: integer('created_at').notNull(),
+  expiresAt: integer('expires_at'),
+  meta: text('meta', { mode: 'json' }).default('{}'),
+}, (table) => [
+  index('idx_slack_questions_status').on(table.status),
+  index('idx_slack_questions_channel_msg').on(table.channelId, table.messageTs),
+])
+
+// Integration configs (key-value store for integration settings)
+export const integrationConfigs = sqliteTable('integration_configs', {
+  id: text('id').primaryKey(),                             // e.g. 'slack'
+  config: text('config', { mode: 'json' }).notNull(),      // JSON config
+  updatedAt: integer('updated_at').notNull(),
+})
+
 // Track last analysis state per user+repo combination
 export const insightAnalysisState = sqliteTable('insight_analysis_state', {
   id: text('id').primaryKey(),                 // composite: `${userId}:${repoName || 'all'}`

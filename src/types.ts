@@ -96,3 +96,43 @@ export type InsightAnalysisState = {
   lastAnalyzedAt: number
   lastEventTimestamp: number
 }
+
+// Slack question types
+export type SlackQuestionOption = {
+  id: string
+  label: string
+  style?: 'primary' | 'danger'
+}
+
+export type SlackQuestion = {
+  id: string
+  question: string
+  context: string | null
+  status: 'pending' | 'posted' | 'answered' | 'expired'
+  channelId: string | null
+  messageTs: string | null
+  threadTs: string | null
+  answer: string | null
+  answeredBy: string | null
+  answeredByName: string | null
+  answeredAt: number | null
+  answerSource: 'thread' | 'button' | 'api' | null
+  options: SlackQuestionOption[] | null
+  selectedOption: string | null
+  insightId: string | null
+  sessionId: string | null
+  createdAt: number
+  expiresAt: number | null
+  meta: Record<string, unknown>
+}
+
+export type CreateSlackQuestionInput = {
+  question: string
+  context?: string
+  channelId?: string
+  options?: SlackQuestionOption[]
+  insightId?: string
+  sessionId?: string
+  expiresAt?: number
+  meta?: Record<string, unknown>
+}
