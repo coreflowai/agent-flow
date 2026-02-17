@@ -1,5 +1,13 @@
 import { createServer } from './src/server-factory'
 
+// Prevent uncaught errors from crashing the process (e.g. Slack SDK internals)
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err.message || err)
+})
+process.on('unhandledRejection', (err: any) => {
+  console.error('[unhandledRejection]', err?.message || err)
+})
+
 const PORT = parseInt(process.env.PORT ?? '3333', 10)
 const DB_PATH = process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
 

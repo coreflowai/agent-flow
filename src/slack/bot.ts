@@ -18,134 +18,130 @@ export type SlackBot = {
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
 }
 
+// Validate token with plain fetch — never touches @slack/bolt internals
+async function validateSlackToken(botToken: string): Promise<{ ok: boolean; error?: string; team?: string; user?: string }> {
+  try {
+    const res = await fetch('https://slack.com/api/auth.test', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${botToken}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    })
+    return await res.json() as { ok: boolean; error?: string; team?: string; user?: string }
+  } catch (err: any) {
+    return { ok: false, error: err.message || 'Network error' }
+  }
+}
+
 export function createSlackBot(options: SlackBotOptions): SlackBot {
   const { botToken, appToken, channel, io } = options
   let connected = false
+  let app: App | null = null
 
-  const app = new App({
-    token: botToken,
-    appToken,
-    socketMode: true,
-  })
-
-  // Catch async errors from Socket Mode / Web API to prevent process crash
-  app.error(async (error) => {
-    console.error('[SlackBot] Error:', error.message || error)
-    connected = false
-    if (io) io.emit('slack:status', { connected: false })
-  })
-
-  // Thread reply listener — matches replies to question threads
-  app.message(async ({ message, client }) => {
-    // Only handle threaded replies (messages with thread_ts)
-    if (!('thread_ts' in message) || !message.thread_ts) return
-    if (!('channel' in message) || !message.channel) return
-    // Ignore bot messages
-    if ('bot_id' in message && message.bot_id) return
-    if (!('text' in message) || !message.text) return
-
-    const question = findQuestionByThread(message.channel, message.thread_ts)
-    if (!question) return
-    if (question.status === 'answered') return
-
-    // Get user info
-    let userName: string | undefined
-    if ('user' in message && message.user) {
-      try {
-        const userInfo = await client.users.info({ user: message.user })
-        userName = userInfo.user?.real_name || userInfo.user?.name
-      } catch {}
-    }
-
-    updateQuestionAnswer(question.id, {
-      answer: message.text,
-      answeredBy: ('user' in message ? message.user : undefined) || 'unknown',
-      answeredByName: userName,
-      answerSource: 'thread',
-      threadTs: ('ts' in message ? message.ts : undefined) as string | undefined,
+  function setupListeners(a: App) {
+    // Catch async errors from Socket Mode / Web API
+    a.error(async (error) => {
+      console.error('[SlackBot] Error:', error.message || error)
+      connected = false
+      if (io) io.emit('slack:status', { connected: false })
     })
 
-    const updated = getQuestion(question.id)
-    if (updated && io) {
-      io.emit('slack:question:answered', updated)
-    }
-  })
+    // Thread reply listener — matches replies to question threads
+    a.message(async ({ message, client }) => {
+      if (!('thread_ts' in message) || !message.thread_ts) return
+      if (!('channel' in message) || !message.channel) return
+      if ('bot_id' in message && message.bot_id) return
+      if (!('text' in message) || !message.text) return
 
-  // Button click listener — matches action IDs starting with slack_q_
-  app.action(/^slack_q_/, async ({ action, body, ack, client }) => {
-    await ack()
+      const question = findQuestionByThread(message.channel, message.thread_ts)
+      if (!question) return
+      if (question.status === 'answered') return
 
-    if (action.type !== 'button') return
-    // action_id format: slack_q_{questionId}_{optionId}
-    const parts = action.action_id.split('_')
-    // Find questionId — it's between "slack_q_" prefix and the last segment (optionId)
-    // Since questionId is a UUID, reconstruct it
-    const actionId = action.action_id
-    const prefix = 'slack_q_'
-    const withoutPrefix = actionId.slice(prefix.length)
-    // The option ID is the value
-    const optionId = action.value || ''
+      let userName: string | undefined
+      if ('user' in message && message.user) {
+        try {
+          const userInfo = await client.users.info({ user: message.user })
+          userName = userInfo.user?.real_name || userInfo.user?.name
+        } catch {}
+      }
 
-    // block_id is the question ID
-    const questionId = action.block_id || ''
+      updateQuestionAnswer(question.id, {
+        answer: message.text,
+        answeredBy: ('user' in message ? message.user : undefined) || 'unknown',
+        answeredByName: userName,
+        answerSource: 'thread',
+        threadTs: ('ts' in message ? message.ts : undefined) as string | undefined,
+      })
 
-    const question = getQuestion(questionId)
-    if (!question) return
-    if (question.status === 'answered') return
-
-    const selectedOption = question.options?.find(o => o.id === optionId)
-    const userId = 'user' in body ? (body.user as any)?.id : undefined
-    const userName = 'user' in body ? (body.user as any)?.name : undefined
-
-    updateQuestionAnswer(questionId, {
-      answer: selectedOption?.label || optionId,
-      answeredBy: userId || 'unknown',
-      answeredByName: userName,
-      answerSource: 'button',
-      selectedOption: optionId,
+      const updated = getQuestion(question.id)
+      if (updated && io) {
+        io.emit('slack:question:answered', updated)
+      }
     })
 
-    // Update the Slack message to show result
-    if (question.channelId && question.messageTs) {
-      try {
-        await client.chat.update({
-          channel: question.channelId,
-          ts: question.messageTs,
-          blocks: [
-            {
-              type: 'section',
-              text: { type: 'mrkdwn', text: `*${question.question}*` },
-            },
-            ...(question.context ? [{
-              type: 'context' as const,
-              elements: [{ type: 'mrkdwn' as const, text: question.context }],
-            }] : []),
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `:white_check_mark: *${selectedOption?.label || optionId}* — answered by <@${userId}>`,
+    // Button click listener — matches action IDs starting with slack_q_
+    a.action(/^slack_q_/, async ({ action, body, ack, client }) => {
+      await ack()
+
+      if (action.type !== 'button') return
+      const optionId = action.value || ''
+      const questionId = action.block_id || ''
+
+      const question = getQuestion(questionId)
+      if (!question) return
+      if (question.status === 'answered') return
+
+      const selectedOption = question.options?.find(o => o.id === optionId)
+      const userId = 'user' in body ? (body.user as any)?.id : undefined
+      const userName = 'user' in body ? (body.user as any)?.name : undefined
+
+      updateQuestionAnswer(questionId, {
+        answer: selectedOption?.label || optionId,
+        answeredBy: userId || 'unknown',
+        answeredByName: userName,
+        answerSource: 'button',
+        selectedOption: optionId,
+      })
+
+      if (question.channelId && question.messageTs) {
+        try {
+          await client.chat.update({
+            channel: question.channelId,
+            ts: question.messageTs,
+            blocks: [
+              {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*${question.question}*` },
               },
-            },
-          ],
-          text: `${question.question} — Answered: ${selectedOption?.label || optionId}`,
-        })
-      } catch {}
-    }
+              ...(question.context ? [{
+                type: 'context' as const,
+                elements: [{ type: 'mrkdwn' as const, text: question.context }],
+              }] : []),
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `:white_check_mark: *${selectedOption?.label || optionId}* — answered by <@${userId}>`,
+                },
+              },
+            ],
+            text: `${question.question} — Answered: ${selectedOption?.label || optionId}`,
+          })
+        } catch {}
+      }
 
-    const updated = getQuestion(questionId)
-    if (updated && io) {
-      io.emit('slack:question:answered', updated)
-    }
-  })
+      const updated = getQuestion(questionId)
+      if (updated && io) {
+        io.emit('slack:question:answered', updated)
+      }
+    })
+  }
 
   async function postQuestion(questionId: string): Promise<SlackQuestion | null> {
+    if (!app) return null
     const question = getQuestion(questionId)
     if (!question) return null
 
     const targetChannel = question.channelId || channel
 
-    // Build Block Kit message
     const blocks: any[] = [
       {
         type: 'section',
@@ -197,35 +193,35 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
   }
 
   async function testConnection(): Promise<{ ok: boolean; team?: string; user?: string; error?: string }> {
-    try {
-      const result = await app.client.auth.test()
-      return {
-        ok: result.ok || false,
-        team: result.team as string | undefined,
-        user: result.user as string | undefined,
-      }
-    } catch (err: any) {
-      return { ok: false, error: err.message || 'Connection failed' }
+    const result = await validateSlackToken(botToken)
+    if (result.ok) {
+      return { ok: true, team: result.team, user: result.user }
     }
+    return { ok: false, error: result.error || 'Connection failed' }
   }
 
   return {
     start: async () => {
-      // Validate tokens before attempting connection
-      const authTest = await app.client.auth.test().catch((err: any) => {
-        throw new Error(`Slack auth failed: ${err.data?.error || err.message}`)
-      })
-      if (!authTest.ok) throw new Error('Slack auth.test returned not ok')
+      // Validate bot token with plain fetch first — if invalid, bail early
+      const authResult = await validateSlackToken(botToken)
+      if (!authResult.ok) {
+        throw new Error(`Slack auth failed: ${authResult.error}`)
+      }
+
+      // Only now construct the App — tokens are valid
+      app = new App({ token: botToken, appToken, socketMode: true })
+      setupListeners(app)
 
       await app.start()
       connected = true
       if (io) io.emit('slack:status', { connected: true })
-      console.log('Slack bot connected (Socket Mode)')
+      console.log(`Slack bot connected (Socket Mode) — team: ${authResult.team}`)
     },
     stop: async () => {
       connected = false
       if (io) io.emit('slack:status', { connected: false })
-      await app.stop()
+      if (app) await app.stop()
+      app = null
     },
     postQuestion,
     isConnected: () => connected,
