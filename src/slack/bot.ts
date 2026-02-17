@@ -208,6 +208,11 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         throw new Error(`Slack auth failed: ${authResult.error}`)
       }
 
+      // Validate app token format — must be xapp- for Socket Mode
+      if (!appToken.startsWith('xapp-')) {
+        throw new Error(`Slack app token must start with xapp- (got ${appToken.slice(0, 6)}...)`)
+      }
+
       // Only now construct the App — tokens are valid
       app = new App({ token: botToken, appToken, socketMode: true })
       setupListeners(app)
