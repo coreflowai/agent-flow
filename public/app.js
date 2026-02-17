@@ -444,7 +444,6 @@ function renderSessionList() {
       const isWaitingForUser = s.status === 'active' && isSessionWaiting(s)
       const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
         : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
-        : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
         : ''
       const time = timeAgo(s.lastEventTime)
       const dur = s.lastEventTime - s.startTime
@@ -1342,7 +1341,6 @@ function updateBubbleContent(el, session) {
   const title = session.metadata?.title || userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
   const waiting = isSessionWaiting(session)
-  const spinner = !waiting ? '<span class="css-spinner ml-1"></span>' : ''
 
   const lastLabel = formatSessionLastEvent(session.lastEventType)
   const lastText = session.lastEventText ? esc(truncate(session.lastEventText, 50)) : ''
@@ -1360,7 +1358,6 @@ function updateBubbleContent(el, session) {
     <div class="flex items-center gap-1.5 mb-1">
       <span class="opacity-60 flex-shrink-0">${icon}</span>
       <span class="text-xs font-medium truncate flex-1">${primaryLine}</span>
-      ${spinner}
       <button class="archive-btn btn btn-xs btn-ghost px-1" data-bubble-archive="${session.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>
     </div>
     ${secondaryLine}
