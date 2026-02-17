@@ -62,6 +62,21 @@
     .bubble-section:has(.agent-bubble:not(.exiting)) .bubble-section-empty { display: none; }
     .bubble-category { min-height: 48px; }
 
+    /* Bubble hover tooltip */
+    .bubble-tooltip {
+      position: fixed; z-index: 100; pointer-events: none;
+      max-width: 360px; min-width: 180px;
+      background: var(--color-base-200); border: 1px solid var(--color-base-300);
+      border-radius: 8px; padding: 8px 10px;
+      font-size: 12px; line-height: 1.5;
+      color: color-mix(in oklch, var(--color-base-content) 80%, transparent);
+      box-shadow: 0 4px 16px oklch(0% 0 0 / 0.3);
+      opacity: 0; transition: opacity 0.15s;
+      white-space: pre-wrap; word-break: break-word;
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical;
+    }
+    .bubble-tooltip.visible { opacity: 1; }
+
     /* Archive button hover-reveal */
     .archive-btn { opacity: 0; transition: opacity 0.15s; }
     .session-item:hover .archive-btn, .agent-bubble:hover .archive-btn { opacity: 0.5; }
@@ -192,13 +207,19 @@
   <div class="navbar bg-base-200 px-4 min-h-10 h-10 border-b border-base-300">
     <div class="flex-1 min-w-0">
       <span id="btn-title" class="text-sm font-bold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Back to overview (v)">AgentFlow</span>
-      <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
     </div>
     <div class="flex-none gap-1 sm:gap-2">
       <span id="connection-dot" class="inline-block w-2 h-2 rounded-full bg-base-300" title="connecting..."></span>
       <button id="btn-insights" class="btn btn-xs btn-ghost" title="View insights (i)">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
       </button>
+      <div class="dropdown dropdown-end">
+        <button tabindex="0" class="btn btn-xs btn-ghost" title="Switch theme">
+          <i data-lucide="palette" class="w-3.5 h-3.5"></i>
+        </button>
+        <ul tabindex="0" id="theme-menu" class="dropdown-content menu menu-xs bg-base-200 border border-base-300 rounded-lg z-50 w-36 p-1 shadow-lg mt-1 max-h-64 overflow-y-auto">
+        </ul>
+      </div>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
       <button id="btn-invite" class="btn btn-xs btn-ghost" title="Invite user">
         <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
@@ -512,6 +533,8 @@
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
+
+  <div id="bubble-tooltip" class="bubble-tooltip"></div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>

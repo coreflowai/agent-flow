@@ -1403,6 +1403,44 @@ document.getElementById('bubble-scroll').addEventListener('click', (e) => {
   }
 })
 
+// --- Bubble hover tooltip ---
+const bubbleTooltip = document.getElementById('bubble-tooltip')
+let tooltipTimer = null
+const bubbleScrollEl = document.getElementById('bubble-scroll')
+
+bubbleScrollEl.addEventListener('mouseenter', (e) => {
+  const bubble = e.target.closest('.agent-bubble')
+  if (!bubble) return
+  const sid = bubble.dataset.sid
+  const session = sessions.find(s => s.id === sid)
+  if (!session || !session.lastEventText) return
+  clearTimeout(tooltipTimer)
+  bubbleTooltip.textContent = session.lastEventText
+  const rect = bubble.getBoundingClientRect()
+  bubbleTooltip.style.left = rect.left + 'px'
+  bubbleTooltip.style.top = (rect.bottom + 6) + 'px'
+  // Clamp to viewport
+  bubbleTooltip.classList.add('visible')
+  requestAnimationFrame(() => {
+    const tr = bubbleTooltip.getBoundingClientRect()
+    if (tr.right > window.innerWidth - 8) bubbleTooltip.style.left = (window.innerWidth - tr.width - 8) + 'px'
+    if (tr.bottom > window.innerHeight - 8) bubbleTooltip.style.top = (rect.top - tr.height - 6) + 'px'
+  })
+}, true)
+
+bubbleScrollEl.addEventListener('mouseleave', (e) => {
+  const bubble = e.target.closest('.agent-bubble')
+  if (!bubble) return
+  tooltipTimer = setTimeout(() => bubbleTooltip.classList.remove('visible'), 100)
+}, true)
+
+bubbleScrollEl.addEventListener('mousemove', (e) => {
+  if (!bubbleTooltip.classList.contains('visible')) return
+  if (!e.target.closest('.agent-bubble')) {
+    bubbleTooltip.classList.remove('visible')
+  }
+})
+
 // --- Stale session cleanup (client-side) ---
 setInterval(() => {
   let changed = false
@@ -1763,6 +1801,40 @@ socket.on('insight:deleted', (id) => {
     renderInsights()
   }
 })
+
+// --- Theme switcher ---
+const THEMES = [
+  'dark', 'light', 'night', 'dim', 'sunset',
+  'dracula', 'synthwave', 'cyberpunk', 'black', 'luxury',
+  'coffee', 'forest', 'business', 'nord',
+  'wireframe', 'lofi', 'corporate', 'emerald',
+]
+
+function initTheme() {
+  const saved = localStorage.getItem('agentflow_theme')
+  if (saved) document.documentElement.setAttribute('data-theme', saved)
+  renderThemeMenu()
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('agentflow_theme', theme)
+  renderThemeMenu()
+  // Close dropdown by blurring
+  document.activeElement?.blur()
+}
+
+function renderThemeMenu() {
+  const menu = document.getElementById('theme-menu')
+  if (!menu) return
+  const current = document.documentElement.getAttribute('data-theme') || 'dark'
+  menu.innerHTML = THEMES.map(t => {
+    const active = t === current ? 'active' : ''
+    return `<li><a class="text-[11px] ${active}" onclick="setTheme('${t}')">${t}</a></li>`
+  }).join('')
+}
+
+initTheme()
 
 // Init Lucide icons
 lucide.createIcons()
