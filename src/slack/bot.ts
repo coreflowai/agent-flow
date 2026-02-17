@@ -211,6 +211,12 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
   return {
     start: async () => {
+      // Validate tokens before attempting connection
+      const authTest = await app.client.auth.test().catch((err: any) => {
+        throw new Error(`Slack auth failed: ${err.data?.error || err.message}`)
+      })
+      if (!authTest.ok) throw new Error('Slack auth.test returned not ok')
+
       await app.start()
       connected = true
       if (io) io.emit('slack:status', { connected: true })
