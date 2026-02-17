@@ -16,6 +16,7 @@ export type SlackBot = {
   start: () => Promise<void>
   stop: () => Promise<void>
   postQuestion: (questionId: string) => Promise<SlackQuestion | null>
+  postNotification: (message: string) => Promise<void>
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
 }
@@ -237,6 +238,14 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       app = null
     },
     postQuestion,
+    postNotification: async (message: string) => {
+      if (!app) return
+      try {
+        await app.client.chat.postMessage({ channel, text: message })
+      } catch (err) {
+        console.error('[SlackBot] Failed to post notification:', err)
+      }
+    },
     isConnected: () => connected,
     testConnection,
   }

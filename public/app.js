@@ -1844,6 +1844,20 @@ socket.on('insight:updated', (updatedInsight) => {
   }
 })
 
+// --- Toast notifications ---
+function showToast(message, type = 'error') {
+  const container = document.getElementById('toast-container')
+  const alert = document.createElement('div')
+  alert.className = `alert alert-${type} shadow-lg text-xs`
+  alert.innerHTML = `<span>${esc(message)}</span>`
+  container.appendChild(alert)
+  setTimeout(() => alert.remove(), 8000)
+}
+
+socket.on('insight:error', ({ userId, error }) => {
+  showToast(`Insight analysis failed for ${userId}: ${error}`)
+})
+
 // --- Integrations: Slack config ---
 const slackBotTokenInput = document.getElementById('slack-bot-token')
 const slackAppTokenInput = document.getElementById('slack-app-token')

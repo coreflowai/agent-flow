@@ -371,7 +371,7 @@ export async function runAnalysis(
   }
 
   const client = new Anthropic({ apiKey })
-  const model = 'claude-sonnet-4-20250514'
+  const model = 'claude-sonnet-4-6'
 
   try {
     let messages: Anthropic.MessageParam[] = [
@@ -578,7 +578,7 @@ answers raised further things worth clarifying (but don't force it — most refi
 Be specific, actionable, and integrate the human answers into a better analysis.`
 
   const client = new Anthropic({ apiKey })
-  const model = 'claude-sonnet-4-20250514'
+  const model = 'claude-sonnet-4-6'
 
   try {
     let messages: Anthropic.MessageParam[] = [

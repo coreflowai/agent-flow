@@ -215,6 +215,10 @@ async function analyzeUser(
 
   if (!result.success) {
     console.error(`[InsightScheduler] Analysis failed for ${userId}:`, result.error)
+    io.emit('insight:error', { userId, error: result.error, timestamp: Date.now() })
+    if (slackBot?.bot?.isConnected()) {
+      await slackBot.bot.postNotification(`⚠️ Insight analysis failed for *${userId}*:\n>${result.error}`)
+    }
     return
   }
 
@@ -323,6 +327,10 @@ async function analyzeUser(
 
     if (!refinedResult.success) {
       console.error(`[InsightScheduler] Refinement failed for ${userId}:`, refinedResult.error)
+      io.emit('insight:error', { userId, error: refinedResult.error, timestamp: Date.now() })
+      if (slackBot?.bot?.isConnected()) {
+        await slackBot.bot.postNotification(`⚠️ Insight refinement failed for *${userId}*:\n>${refinedResult.error}`)
+      }
       break
     }
 
@@ -386,6 +394,7 @@ async function handleLateAnswer(
 
   if (!refinedResult.success) {
     console.error(`[InsightScheduler] Late refinement failed for ${userId}:`, refinedResult.error)
+    io.emit('insight:error', { userId, error: refinedResult.error, timestamp: Date.now() })
     return
   }
 
