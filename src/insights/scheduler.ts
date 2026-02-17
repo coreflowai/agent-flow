@@ -20,7 +20,7 @@ export type InsightSchedulerOptions = {
   io: SocketIOServer
   /** Path to the SQLite database */
   dbPath: string
-  /** Cron expression (default: every 30 minutes) */
+  /** Cron expression (default: every 5 hours) */
   cronExpression?: string
   /** Whether to run immediately on start */
   runOnStart?: boolean
@@ -39,13 +39,13 @@ export type InsightScheduler = {
 
 /**
  * Create and start the insight analysis scheduler.
- * Runs every 30 minutes by default, analyzing all sessions per user.
+ * Runs every 5 hours by default, analyzing all sessions per user.
  */
 export function createInsightScheduler(options: InsightSchedulerOptions): InsightScheduler {
   const {
     io,
     dbPath,
-    cronExpression = '*/30 * * * *', // Every 30 minutes
+    cronExpression = '0 */5 * * *', // Every 5 hours
     runOnStart = false,
     minEventsForAnalysis = MIN_EVENTS_FOR_ANALYSIS,
   } = options
