@@ -67,6 +67,14 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
       const question = findQuestionByThread(message.channel, message.thread_ts)
       if (!question) return
+
+      // Always react to acknowledge the reply
+      try {
+        if ('ts' in message && message.ts) {
+          await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
+        }
+      } catch {}
+
       if (question.status === 'answered') return
 
       let userName: string | undefined
@@ -85,12 +93,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         threadTs: ('ts' in message ? message.ts : undefined) as string | undefined,
       })
 
-      // Add reaction to acknowledge the reply was received
-      try {
-        if ('ts' in message && message.ts) {
-          await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
-        }
-      } catch {}
+      console.log(`[SlackBot] Answer received for question ${question.id} from ${userName || 'unknown'}`)
 
       const updated = getQuestion(question.id)
       if (updated && io) {
