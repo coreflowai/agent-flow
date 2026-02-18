@@ -129,6 +129,15 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
 
     try {
       const maxIterations = 10
+      // Trim history to last MAX_HISTORY messages to stay within token limits
+      const MAX_HISTORY = 20
+      if (conv.messages.length > MAX_HISTORY) {
+        conv.messages = conv.messages.slice(-MAX_HISTORY)
+        // Ensure first message is a user message (API requirement)
+        while (conv.messages.length > 0 && conv.messages[0].role !== 'user') {
+          conv.messages.shift()
+        }
+      }
       // Build a working copy of messages for the agentic loop
       const loopMessages = [...conv.messages]
 
@@ -160,6 +169,7 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
           for (const block of toolUseBlocks) {
             if (block.type !== 'tool_use') continue
             let result: string
+            const MAX_TOOL_RESULT = 30_000 // ~8K tokens cap per tool result
             try {
               if (block.name === 'sql') {
                 result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
@@ -167,6 +177,9 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
                 result = executeSchemaTools()
               } else {
                 result = `Unknown tool: ${block.name}`
+              }
+              if (result.length > MAX_TOOL_RESULT) {
+                result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT in your query for smaller results)'
               }
             } catch (err) {
               result = `Error: ${err instanceof Error ? err.message : String(err)}`
