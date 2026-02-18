@@ -85,6 +85,13 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         threadTs: ('ts' in message ? message.ts : undefined) as string | undefined,
       })
 
+      // Add reaction to acknowledge the reply was received
+      try {
+        if ('ts' in message && message.ts) {
+          await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
+        }
+      } catch {}
+
       const updated = getQuestion(question.id)
       if (updated && io) {
         io.emit('slack:question:answered', updated)
