@@ -127,3 +127,51 @@ Check these logs proactively when:
 - A user reports something isn't working in production
 - After deploying changes to verify they're working
 - When debugging Slack/Discord integration issues (look for `[SlackBot]`, `[Curiosity]` prefixes)
+
+## E2E Testing for Integration Features
+
+**Every new integration feature must be verified end-to-end on production using browser automation.** Don't just ship code — verify the full user flow works.
+
+### Browser Automation
+
+Use Chrome browser tools (MCP `claude-in-chrome`) or [agent-browser](https://github.com/vercel-labs/agent-browser) for E2E verification:
+
+1. **Navigate to production** (https://agent.coreflow.sh)
+2. **Exercise the UI flow** — click through the feature as a user would
+3. **Check the console** for errors (`read_console_messages`)
+4. **Verify API responses** via `javascript_tool` (e.g. fetch endpoints and check data)
+5. **Test the full loop** — if it's an ingestion feature, send a real message and confirm it arrives
+
+### Checklist for Integration Features
+
+For any Slack/Discord/RSS data source feature:
+
+- [ ] **Dropdown/form works** — open the form, verify dropdowns populate, select items
+- [ ] **Data saves correctly** — save and verify the API returns correct config (channel IDs, not names)
+- [ ] **Messages flow through** — send a real message in the source (Slack/Discord), confirm it appears as a source entry in AgentFlow
+- [ ] **Feed view shows entries** — check `/api/source-entries` returns the ingested message
+- [ ] **Error cases** — verify graceful fallback when not connected (e.g. plain text input if Slack bot offline)
+
+### Example: Slack Channel Dropdown (verified 2026-02-19)
+
+1. Added `channels:read` + `groups:read` OAuth scopes in Slack API settings, reinstalled app
+2. Opened Data Sources → Add Source → Slack Channel type
+3. Clicked channel input → dropdown showed 68 channels with `#name (N members)` format
+4. Selected `#off-topic` → input showed `#off-topic`, hidden field stored `C092M7LNLJC`
+5. Saved as `off-topic-test` → source created with correct `channelId`
+6. Sent test message in Slack `#off-topic` → message ingested within seconds
+7. Verified via API: `entries: 1`, content matched the test message
+
+### Integration API Routes
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/integrations/slack/channels` | List Slack channels (requires connected bot) |
+| GET | `/api/integrations/discord` | Discord config (token masked) |
+| POST | `/api/integrations/discord` | Save Discord bot token |
+| POST | `/api/integrations/discord/test` | Test Discord connection |
+| GET | `/api/integrations/discord/guilds` | List Discord guilds |
+| GET | `/api/integrations/discord/channels?guildId=X` | List Discord text channels |
+| GET | `/api/sources` | List all data sources with entry counts |
+| GET | `/api/sources/:id/entries` | Paginated entries for a source |
+| GET | `/api/source-entries` | All entries across sources (feed view) |
