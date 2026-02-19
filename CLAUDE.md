@@ -108,5 +108,22 @@ Tests use the server factory with ephemeral `/tmp` databases. Each test creates 
 ## Production
 
 - **URL**: https://agent.coreflow.sh
+- **Hosting**: Railway
 - **API**: All `/api/*` routes require authentication via `x-api-key` header or session cookie
 - Query sessions: `curl -H "x-api-key: $KEY" https://agent.coreflow.sh/api/sessions`
+
+## Debugging Production
+
+When investigating errors or unexpected behavior, always check Railway logs first:
+
+```bash
+railway logs --lines 50              # Last 50 lines from current deployment
+railway logs --since 10m             # Logs from the last 10 minutes
+railway logs --since 1h              # Logs from the last hour
+railway logs --since 10m 2>&1 | grep -i error   # Filter for errors
+```
+
+Check these logs proactively when:
+- A user reports something isn't working in production
+- After deploying changes to verify they're working
+- When debugging Slack/Discord integration issues (look for `[SlackBot]`, `[Curiosity]` prefixes)
