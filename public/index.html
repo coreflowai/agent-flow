@@ -7,6 +7,8 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- Prevent FOUC: hide until Tailwind browser runtime processes styles -->
+  <style>html { opacity: 0; }</style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet" />
@@ -14,6 +16,7 @@
     @theme {
       --font-mono: 'Geist Mono', monospace;
     }
+    html { opacity: 1; }
     body { min-height: 100vh; font-family: 'Geist Mono', monospace; }
     .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
     .session-item:hover { background: color-mix(in oklch, var(--color-base-content) 8%, transparent); }
