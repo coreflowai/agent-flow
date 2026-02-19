@@ -231,13 +231,36 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
       const loopMessages = [...conv.messages]
 
       for (let i = 0; i < maxIterations; i++) {
-        const response = await client.messages.create({
-          model,
-          max_tokens: 4096,
-          system: SYSTEM_PROMPT,
-          tools: chatTools as any,
-          messages: loopMessages,
-        })
+        let response: Anthropic.Message
+        try {
+          response = await client.messages.create({
+            model,
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            tools: chatTools as any,
+            messages: loopMessages,
+          })
+        } catch (apiErr: any) {
+          // If image can't be processed, strip all image blocks and retry once
+          if (apiErr?.status === 400 && /could not process image/i.test(apiErr?.message ?? '')) {
+            console.warn('[ChatHandler] Image rejected by API, retrying without images')
+            const stripped = loopMessages.map(m => {
+              if (m.role !== 'user' || !Array.isArray(m.content)) return m
+              const filtered = (m.content as Anthropic.ContentBlockParam[]).filter(b => b.type !== 'image')
+              if (filtered.length === 0) return { ...m, content: '(shared an image that could not be processed)' }
+              return { ...m, content: filtered }
+            })
+            response = await client.messages.create({
+              model,
+              max_tokens: 4096,
+              system: SYSTEM_PROMPT,
+              tools: chatTools as any,
+              messages: stripped,
+            })
+          } else {
+            throw apiErr
+          }
+        }
 
         if (response.stop_reason === 'end_turn') {
           const textBlock = response.content.find(c => c.type === 'text')
