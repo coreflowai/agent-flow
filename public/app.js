@@ -1876,42 +1876,51 @@ socket.on('insight:error', ({ userId, error }) => {
 })
 
 // --- Searchable Channel Dropdown helper ---
-function setupSearchableDropdown(inputEl, hiddenEl, dropdownEl, items, { formatItem, onSelect }) {
-  let open = false
+function setupSearchableDropdown(inputEl, hiddenEl, dropdownEl, items, { formatItem, formatLabel, onSelect }) {
+  // Prevent duplicate listeners by replacing the input element
+  const fresh = inputEl.cloneNode(true)
+  inputEl.parentNode.replaceChild(fresh, inputEl)
+
+  // Use a plain text label for filtering (strip HTML)
+  const labelFn = formatLabel || ((item) => item.name || item.id)
 
   function render(filter) {
     const q = (filter || '').toLowerCase()
-    const filtered = q ? items.filter(i => formatItem(i).toLowerCase().includes(q)) : items
+    const filtered = q ? items.filter(i => labelFn(i).toLowerCase().includes(q)) : items
     if (filtered.length === 0) {
       dropdownEl.innerHTML = '<div class="px-3 py-2 text-xs opacity-40">No matches</div>'
     } else {
-      dropdownEl.innerHTML = filtered.slice(0, 50).map((item, idx) =>
-        `<div class="px-3 py-1.5 text-xs cursor-pointer hover:bg-base-200 ${idx === 0 ? 'rounded-t-lg' : ''}" data-id="${item.id}">${formatItem(item)}</div>`
+      dropdownEl.innerHTML = filtered.slice(0, 50).map((item) =>
+        `<div class="px-3 py-1.5 text-xs cursor-pointer hover:bg-base-200" data-id="${item.id}">${formatItem(item)}</div>`
       ).join('')
     }
     dropdownEl.classList.remove('hidden')
-    open = true
-
-    // Attach click handlers
-    dropdownEl.querySelectorAll('[data-id]').forEach(el => {
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault()
-        const selected = items.find(i => i.id === el.dataset.id)
-        if (selected) {
-          onSelect(selected)
-          hiddenEl.value = selected.id
-          dropdownEl.classList.add('hidden')
-          open = false
-        }
-      })
-    })
   }
 
-  inputEl.addEventListener('focus', () => render(inputEl.value))
-  inputEl.addEventListener('input', () => render(inputEl.value))
-  inputEl.addEventListener('blur', () => {
-    setTimeout(() => { dropdownEl.classList.add('hidden'); open = false }, 150)
+  // Single delegated mousedown on the dropdown container
+  dropdownEl.onmousedown = (e) => {
+    e.preventDefault()
+    const row = e.target.closest('[data-id]')
+    if (!row) return
+    const selected = items.find(i => i.id === row.dataset.id)
+    if (selected) {
+      onSelect(selected)
+      fresh.value = labelFn(selected)
+      hiddenEl.value = selected.id
+      dropdownEl.classList.add('hidden')
+    }
+  }
+
+  fresh.addEventListener('focus', () => render(fresh.value))
+  fresh.addEventListener('input', () => {
+    hiddenEl.value = '' // clear hidden ID when typing manually
+    render(fresh.value)
   })
+  fresh.addEventListener('blur', () => {
+    setTimeout(() => dropdownEl.classList.add('hidden'), 200)
+  })
+
+  return fresh // return the new element in case caller needs it
 }
 
 // --- Integrations: Slack config ---
@@ -1946,17 +1955,16 @@ async function fetchSlackChannels() {
 async function initSlackChannelDropdown() {
   const channels = await fetchSlackChannels()
   if (!channels) return // Slack not connected — leave as plain text input
-  setupSearchableDropdown(
-    slackChannelInput, slackChannelIdInput, slackChannelDropdown,
+  const el = setupSearchableDropdown(
+    document.getElementById('slack-channel'), slackChannelIdInput, slackChannelDropdown,
     channels,
     {
-      formatItem: (ch) => `${ch.isPrivate ? '&#128274;' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
-      onSelect: (ch) => {
-        slackChannelInput.value = `#${ch.name}`
-        slackChannelIdInput.value = ch.id
-      },
+      formatItem: (ch) => `${ch.isPrivate ? '&#128274; ' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
+      formatLabel: (ch) => `#${ch.name}`,
+      onSelect: (ch) => {},
     }
   )
+  if (el) el.id = 'slack-channel' // preserve the ID on the cloned element
 }
 
 function toggleTokenVisibility(input, btn) {
@@ -1996,11 +2004,13 @@ async function loadSlackConfig() {
   try {
     const res = await fetch('/api/integrations/slack', { credentials: 'include' })
     const data = await res.json()
+    const channelInput = document.getElementById('slack-channel')
+    const channelIdInput = document.getElementById('slack-channel-id')
     if (data.configured) {
       slackBotTokenInput.value = data.botToken || ''
       slackAppTokenInput.value = data.appToken || ''
-      slackChannelInput.value = data.channel || ''
-      slackChannelIdInput.value = data.channel || ''
+      if (channelInput) channelInput.value = data.channel || ''
+      if (channelIdInput) channelIdInput.value = data.channel || ''
       setSlackStatus(data.connected)
       if (data.connected) {
         slackChannelsCache = null // reset cache on config reload
@@ -2009,8 +2019,8 @@ async function loadSlackConfig() {
     } else {
       slackBotTokenInput.value = ''
       slackAppTokenInput.value = ''
-      slackChannelInput.value = ''
-      slackChannelIdInput.value = ''
+      if (channelInput) channelInput.value = ''
+      if (channelIdInput) channelIdInput.value = ''
       setSlackStatus(false)
     }
   } catch {
@@ -2029,7 +2039,7 @@ slackSaveBtn.addEventListener('click', async () => {
       body: JSON.stringify({
         botToken: slackBotTokenInput.value.trim(),
         appToken: slackAppTokenInput.value.trim(),
-        channel: slackChannelIdInput.value.trim() || slackChannelInput.value.trim(),
+        channel: (document.getElementById('slack-channel-id')?.value || document.getElementById('slack-channel')?.value || '').trim(),
       }),
     })
     const data = await res.json()
@@ -2422,13 +2432,12 @@ async function initSourceSlackChannelDropdown() {
   const input = document.getElementById('source-slack-channel')
   const hidden = document.getElementById('source-slack-channel-id')
   const dropdown = document.getElementById('source-slack-channel-dropdown')
-  setupSearchableDropdown(input, hidden, dropdown, channels, {
-    formatItem: (ch) => `${ch.isPrivate ? '&#128274;' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
-    onSelect: (ch) => {
-      input.value = `#${ch.name}`
-      hidden.value = ch.id
-    },
+  const el = setupSearchableDropdown(input, hidden, dropdown, channels, {
+    formatItem: (ch) => `${ch.isPrivate ? '&#128274; ' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
+    formatLabel: (ch) => `#${ch.name}`,
+    onSelect: (ch) => {},
   })
+  if (el) el.id = 'source-slack-channel'
 }
 
 // --- Source form: Discord guild dropdown + channel dropdown ---
@@ -2494,13 +2503,12 @@ async function loadDiscordChannelsForGuild(guildId, preselectedChannelId) {
     }
   }
 
-  setupSearchableDropdown(channelInput, channelHidden, channelDropdown, channels, {
+  const el = setupSearchableDropdown(channelInput, channelHidden, channelDropdown, channels, {
     formatItem: (ch) => `#${ch.name}`,
-    onSelect: (ch) => {
-      channelInput.value = `#${ch.name}`
-      channelHidden.value = ch.id
-    },
+    formatLabel: (ch) => `#${ch.name}`,
+    onSelect: (ch) => {},
   })
+  if (el) el.id = 'source-discord-channel'
 }
 
 sourcesAddBtn.addEventListener('click', () => openSourceForm(null))
