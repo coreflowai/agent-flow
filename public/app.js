@@ -2014,7 +2014,16 @@ async function loadSlackConfig() {
       setSlackStatus(data.connected)
       if (data.connected) {
         slackChannelsCache = null // reset cache on config reload
-        initSlackChannelDropdown()
+        initSlackChannelDropdown().then(() => {
+          const chId = data.channel
+          if (chId && slackChannelsCache) {
+            const ch = slackChannelsCache.find(c => c.id === chId)
+            if (ch) {
+              const input = document.getElementById('slack-channel')
+              if (input) input.value = `#${ch.name}`
+            }
+          }
+        })
       }
     } else {
       slackBotTokenInput.value = ''
@@ -2391,7 +2400,17 @@ function openSourceForm(id) {
     if (s.type === 'slack') {
       srcSlackChannel.value = s.config?.channelId || ''
       srcSlackChannelId.value = s.config?.channelId || ''
-      initSourceSlackChannelDropdown()
+      initSourceSlackChannelDropdown().then(() => {
+        // Resolve channel ID back to display name
+        const chId = s.config?.channelId
+        if (chId && slackChannelsCache) {
+          const ch = slackChannelsCache.find(c => c.id === chId)
+          if (ch) {
+            const input = document.getElementById('source-slack-channel')
+            if (input) input.value = `#${ch.name}`
+          }
+        }
+      })
     } else if (s.type === 'discord') {
       initSourceDiscordGuilds(s.config?.guildId, s.config?.channelId)
     } else if (s.type === 'rss') {
@@ -2661,7 +2680,7 @@ function renderFeedEntries() {
     const sourceName = src ? src.name : 'Unknown'
     const author = entry.author || 'Unknown'
     const content = (entry.content || '').length > 300 ? entry.content.slice(0, 300) + '…' : (entry.content || '')
-    const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''
+    const ts = entry.timestamp ? timeAgo(entry.timestamp) : ''
     const url = entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener" class="link link-primary text-[10px] ml-2">Open</a>` : ''
 
     return `<div class="feed-entry">
@@ -2669,7 +2688,7 @@ function renderFeedEntries() {
         <span class="opacity-60">${typeIcon}</span>
         <span class="badge badge-xs badge-ghost text-[9px]">${sourceName}</span>
         <span class="font-semibold text-xs">${escapeHtml(author)}</span>
-        <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap">${ts}</span>
+        <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap" title="${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}">${ts}</span>
         ${url}
       </div>
       <div class="text-xs opacity-80 whitespace-pre-wrap break-words">${escapeHtml(content)}</div>
@@ -2755,7 +2774,7 @@ socket.on('source:entry', (data) => {
   const sourceName = src ? src.name : 'Unknown'
   const author = entry.author || 'Unknown'
   const content = (entry.content || '').length > 300 ? entry.content.slice(0, 300) + '…' : (entry.content || '')
-  const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''
+  const ts = entry.timestamp ? timeAgo(entry.timestamp) : ''
   const url = entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener" class="link link-primary text-[10px] ml-2">Open</a>` : ''
 
   const entryHtml = `<div class="feed-entry" style="animation: fadeIn 0.3s ease-in">
@@ -2763,7 +2782,7 @@ socket.on('source:entry', (data) => {
       <span class="opacity-60">${typeIcon}</span>
       <span class="badge badge-xs badge-ghost text-[9px]">${sourceName}</span>
       <span class="font-semibold text-xs">${escapeHtml(author)}</span>
-      <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap">${ts}</span>
+      <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap" title="${entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}">${ts}</span>
       ${url}
     </div>
     <div class="text-xs opacity-80 whitespace-pre-wrap break-words">${escapeHtml(content)}</div>
