@@ -16,7 +16,7 @@ export type SourceListenerFactory = (
 
 export type SourceListenerDeps = {
   slackBot?: {
-    registerChannelListener(channelId: string, cb: (msg: any) => void): void
+    registerChannelListener(channelId: string, cb: (msg: any, client?: any) => void): void
     unregisterChannelListener(channelId: string): void
   }
 }

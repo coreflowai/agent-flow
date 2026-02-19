@@ -31,7 +31,7 @@ export type SlackBot = {
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
   listChannels: () => Promise<SlackChannel[]>
-  registerChannelListener: (channelId: string, cb: (msg: any) => void) => void
+  registerChannelListener: (channelId: string, cb: (msg: any, client?: any) => void) => void
   unregisterChannelListener: (channelId: string) => void
 }
 
@@ -52,7 +52,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
   const { botToken, appToken, channel, io, internalBus, dbPath, sourcesDbPath } = options
   let connected = false
   let app: App | null = null
-  const channelListeners = new Map<string, (msg: any) => void>()
+  const channelListeners = new Map<string, (msg: any, client?: any) => void>()
 
   // Initialize chat handler if DB paths are available
   let chatHandler: ChatHandler | null = null
@@ -157,7 +157,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if ('channel' in message && message.channel) {
         const channelCb = channelListeners.get(message.channel)
         if (channelCb) {
-          try { channelCb(message) } catch {}
+          try { channelCb(message, client) } catch {}
         }
       }
 
@@ -562,7 +562,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     },
     isConnected: () => connected,
     testConnection,
-    registerChannelListener: (channelId: string, cb: (msg: any) => void) => {
+    registerChannelListener: (channelId: string, cb: (msg: any, client?: any) => void) => {
       channelListeners.set(channelId, cb)
     },
     unregisterChannelListener: (channelId: string) => {
