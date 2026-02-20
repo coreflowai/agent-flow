@@ -201,8 +201,9 @@
     }
     .feed-entry:hover { background: color-mix(in oklch, var(--color-base-content) 3%, transparent); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Mobile responsive */
+  </style>
+  <style>
+    /* Mobile responsive — plain CSS, not processed by Tailwind */
     @media (max-width: 767px) {
       /* Layout */
       #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
