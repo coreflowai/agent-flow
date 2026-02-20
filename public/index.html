@@ -7,8 +7,9 @@
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <!-- Prevent FOUC: hide until Tailwind browser runtime processes styles -->
+  <!-- Prevent FOUC: hide until Tailwind processes styles, with fallback timeout -->
   <style>html { opacity: 0; }</style>
+  <script>setTimeout(function(){ document.documentElement.style.opacity = '1'; }, 3000)</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet" />
@@ -202,7 +203,12 @@
     .feed-entry:hover { background: color-mix(in oklch, var(--color-base-content) 3%, transparent); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
   </style>
-  <link rel="stylesheet" href="/mobile.css" />
+  <script>
+    // Load mobile styles after Tailwind processes — avoids its CSS parser choking on @media
+    fetch('/mobile.css').then(function(r){ return r.text() }).then(function(css){
+      var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+    })
+  </script>
 </head>
 <body class="bg-base-100 text-base-content">
 
