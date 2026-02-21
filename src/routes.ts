@@ -47,7 +47,7 @@ function json(data: unknown, status = 200) {
   })
 }
 
-export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }, internalBus?: EventEmitter, sourceManager?: SourceManager) {
+export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string; adminUserId?: string }) => Promise<void> }, internalBus?: EventEmitter, sourceManager?: SourceManager) {
   return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
@@ -546,6 +546,7 @@ export const AgentFlowPlugin = async () => {
         botToken: c.botToken ? maskToken(c.botToken) : null,
         appToken: c.appToken ? maskToken(c.appToken) : null,
         channel: c.channel || null,
+        adminUserId: c.adminUserId || null,
         connected: slackBot?.bot?.isConnected() || false,
       })
     }
@@ -553,7 +554,7 @@ export const AgentFlowPlugin = async () => {
     // POST /api/integrations/slack — save config, (re)start bot
     if (req.method === 'POST' && pathname === '/api/integrations/slack') {
       try {
-        const body = (await req.json()) as { botToken?: string; appToken?: string; channel?: string }
+        const body = (await req.json()) as { botToken?: string; appToken?: string; channel?: string; adminUserId?: string }
         // Merge with existing config — only overwrite provided fields
         const existing = getIntegrationConfig('slack')
         const prev = (existing?.config || {}) as Record<string, string>
@@ -561,12 +562,13 @@ export const AgentFlowPlugin = async () => {
           botToken: body.botToken && !body.botToken.includes('•') ? body.botToken : prev.botToken || '',
           appToken: body.appToken && !body.appToken.includes('•') ? body.appToken : prev.appToken || '',
           channel: body.channel || prev.channel || '',
+          adminUserId: body.adminUserId !== undefined ? (body.adminUserId || '') : (prev.adminUserId || ''),
         }
         setIntegrationConfig('slack', config)
 
         // Restart bot with new config
         if (config.botToken && config.appToken && slackBot) {
-          await slackBot.restart(config)
+          await slackBot.restart({ ...config, adminUserId: config.adminUserId || undefined })
         }
 
         return json({ ok: true, connected: slackBot?.bot?.isConnected() || false })
@@ -599,6 +601,19 @@ export const AgentFlowPlugin = async () => {
         return json({ channels })
       } catch (err: any) {
         return json({ channels: [], error: err.message ?? 'Failed to list channels' })
+      }
+    }
+
+    // GET /api/integrations/slack/users — list workspace users from connected bot
+    if (req.method === 'GET' && pathname === '/api/integrations/slack/users') {
+      if (!slackBot?.bot?.isConnected()) {
+        return json({ users: [], error: 'Not connected' })
+      }
+      try {
+        const users = await slackBot.bot.listUsers()
+        return json({ users })
+      } catch (err: any) {
+        return json({ users: [], error: err.message ?? 'Failed to list users' })
       }
     }
 
@@ -748,6 +763,61 @@ export const AgentFlowPlugin = async () => {
         const data = await res.json() as any
         if (!res.ok) return json({ ok: false, error: data.message || 'Auth failed' })
         return json({ ok: true, login: data.login, name: data.name })
+      } catch (err: any) {
+        return json({ ok: false, error: err.message || 'Network error' })
+      }
+    }
+
+    // --- Datadog Integration Config ---
+
+    // GET /api/integrations/datadog — get config (keys masked)
+    if (req.method === 'GET' && pathname === '/api/integrations/datadog') {
+      const config = getIntegrationConfig('datadog')
+      if (!config) return json({ configured: false })
+      const c = config.config as Record<string, string>
+      return json({
+        configured: true,
+        apiKey: c.apiKey ? maskToken(c.apiKey) : null,
+        appKey: c.appKey ? maskToken(c.appKey) : null,
+        site: c.site || 'datadoghq.com',
+      })
+    }
+
+    // POST /api/integrations/datadog — save keys
+    if (req.method === 'POST' && pathname === '/api/integrations/datadog') {
+      try {
+        const body = (await req.json()) as { apiKey?: string; appKey?: string; site?: string }
+        const existing = getIntegrationConfig('datadog')
+        const prev = (existing?.config || {}) as Record<string, string>
+        const config = {
+          apiKey: body.apiKey && !body.apiKey.includes('•') ? body.apiKey : prev.apiKey || '',
+          appKey: body.appKey && !body.appKey.includes('•') ? body.appKey : prev.appKey || '',
+          site: body.site || prev.site || 'datadoghq.com',
+        }
+        setIntegrationConfig('datadog', config)
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to save config' }, 500)
+      }
+    }
+
+    // POST /api/integrations/datadog/test — validate API key
+    if (req.method === 'POST' && pathname === '/api/integrations/datadog/test') {
+      const config = getIntegrationConfig('datadog')
+      const c = (config?.config || {}) as Record<string, string>
+      const apiKey = c.apiKey
+      const site = c.site || 'datadoghq.com'
+      if (!apiKey) return json({ ok: false, error: 'API key not configured' })
+      try {
+        const res = await fetch(`https://api.${site}/api/v1/validate`, {
+          headers: {
+            'DD-API-KEY': apiKey,
+            'User-Agent': 'AgentFlow/1.0',
+          },
+        })
+        const data = await res.json() as any
+        if (!res.ok) return json({ ok: false, error: data.errors?.[0] || 'Validation failed' })
+        return json({ ok: true, valid: data.valid })
       } catch (err: any) {
         return json({ ok: false, error: err.message || 'Network error' })
       }

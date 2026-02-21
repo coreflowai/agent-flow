@@ -116,22 +116,22 @@ export function createServer(options: ServerOptions = {}) {
   // Slack bot integration
   let slackBot: SlackBot | null = null
 
-  function getSlackConfig(): { botToken: string; appToken: string; channel: string } | null {
+  function getSlackConfig(): { botToken: string; appToken: string; channel: string; adminUserId?: string } | null {
     // Check DB config first, then fall back to env vars
     const dbConfig = getIntegrationConfig('slack')
     if (dbConfig) {
       const c = dbConfig.config as Record<string, string>
-      if (c.botToken && c.appToken) return { botToken: c.botToken, appToken: c.appToken, channel: c.channel || '' }
+      if (c.botToken && c.appToken) return { botToken: c.botToken, appToken: c.appToken, channel: c.channel || '', adminUserId: c.adminUserId || process.env.SLACK_ADMIN_USER_ID }
     }
     const botToken = process.env.SLACK_BOT_TOKEN
     const appToken = process.env.SLACK_APP_TOKEN
     if (botToken && appToken) {
-      return { botToken, appToken, channel: process.env.SLACK_CHANNEL || '' }
+      return { botToken, appToken, channel: process.env.SLACK_CHANNEL || '', adminUserId: process.env.SLACK_ADMIN_USER_ID }
     }
     return null
   }
 
-  async function startSlackBot(config: { botToken: string; appToken: string; channel: string }) {
+  async function startSlackBot(config: { botToken: string; appToken: string; channel: string; adminUserId?: string }) {
     if (slackBot) {
       try { await slackBot.stop() } catch {}
     }
@@ -144,7 +144,7 @@ export function createServer(options: ServerOptions = {}) {
     }
   }
 
-  async function restartSlackBot(config: { botToken: string; appToken: string; channel: string }) {
+  async function restartSlackBot(config: { botToken: string; appToken: string; channel: string; adminUserId?: string }) {
     await startSlackBot(config)
   }
 

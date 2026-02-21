@@ -438,7 +438,7 @@ export async function runAnalysis(
     const MAX_TOOL_RESULT = 30_000
 
     // Agentic loop - keep calling until we get a final response
-    const maxIterations = 10
+    const maxIterations = 25
     for (let i = 0; i < maxIterations; i++) {
       const response = await client.messages.create({
         model,
@@ -547,6 +547,11 @@ export async function runAnalysis(
             result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT or narrow your WHERE clause)'
           }
 
+          // Nudge the model to wrap up when approaching the limit
+          if (i >= maxIterations - 3) {
+            result += '\n\n⚠️ You are running low on tool calls. Please finish your analysis and output the final JSON now.'
+          }
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -558,7 +563,33 @@ export async function runAnalysis(
       }
     }
 
-    // Max iterations reached
+    // Max iterations reached — try to salvage partial results from the conversation
+    const lastAssistant = messages.findLast(m => m.role === 'assistant')
+    if (lastAssistant && Array.isArray(lastAssistant.content)) {
+      const textBlock = (lastAssistant.content as any[]).find(c => c.type === 'text')
+      if (textBlock?.text) {
+        const analysis = extractAnalysis(textBlock.text)
+        if (analysis) {
+          const mdContent = analysisToMarkdown(analysis)
+          return {
+            success: true,
+            content: mdContent,
+            categories: [],
+            followUpActions: (analysis.followUpActions ?? []).map(a => ({
+              action: a.action, priority: a.priority, category: a.category,
+            })),
+            sessionsAnalyzed: analysis.stats?.sessionsAnalyzed ?? 0,
+            eventsAnalyzed: analysis.stats?.eventsAnalyzed ?? 0,
+            meta: {
+              durationMs: Date.now() - startTime,
+              model,
+              tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+            },
+          }
+        }
+      }
+    }
+
     return {
       success: false,
       content: '',
@@ -651,7 +682,7 @@ Be specific, actionable, and integrate the human answers into a better analysis.
 
     const MAX_TOOL_RESULT = 30_000
 
-    const maxIterations = 10
+    const maxIterations = 25
     for (let i = 0; i < maxIterations; i++) {
       const response = await client.messages.create({
         model, max_tokens: 4096, tools, messages,
@@ -719,9 +750,36 @@ Be specific, actionable, and integrate the human answers into a better analysis.
           if (result.length > MAX_TOOL_RESULT) {
             result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT or narrow your WHERE clause)'
           }
+          if (i >= maxIterations - 3) {
+            result += '\n\n⚠️ You are running low on tool calls. Please finish your analysis and output the final JSON now.'
+          }
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
         }
         messages.push({ role: 'user', content: toolResults })
+      }
+    }
+
+    // Try to salvage partial results
+    const lastAssistant = messages.findLast(m => m.role === 'assistant')
+    if (lastAssistant && Array.isArray(lastAssistant.content)) {
+      const textBlock = (lastAssistant.content as any[]).find(c => c.type === 'text')
+      if (textBlock?.text) {
+        const analysis = extractAnalysis(textBlock.text)
+        if (analysis) {
+          const mdContent = analysisToMarkdown(analysis)
+          return {
+            success: true, content: mdContent, categories: [],
+            followUpActions: (analysis.followUpActions ?? []).map(a => ({
+              action: a.action, priority: a.priority, category: a.category,
+            })),
+            sessionsAnalyzed: analysis.stats?.sessionsAnalyzed ?? 0,
+            eventsAnalyzed: analysis.stats?.eventsAnalyzed ?? 0,
+            meta: {
+              durationMs: Date.now() - startTime, model,
+              tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+            },
+          }
+        }
       }
     }
 

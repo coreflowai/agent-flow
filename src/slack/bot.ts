@@ -9,6 +9,7 @@ export type SlackBotOptions = {
   botToken: string
   appToken: string
   channel: string
+  adminUserId?: string
   io?: SocketIOServer
   internalBus?: EventEmitter
   dbPath?: string
@@ -22,15 +23,25 @@ export type SlackChannel = {
   numMembers: number
 }
 
+export type SlackUser = {
+  id: string
+  name: string
+  realName: string
+  isBot: boolean
+}
+
 export type SlackBot = {
   start: () => Promise<void>
   stop: () => Promise<void>
   postQuestion: (questionId: string) => Promise<SlackQuestion | null>
   postNotification: (message: string) => Promise<void>
+  sendDM: (userId: string, message: string) => Promise<void>
+  sendAdminDM: (message: string) => Promise<void>
   replyInThread: (channelId: string, threadTs: string, text: string) => Promise<string | null>
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
   listChannels: () => Promise<SlackChannel[]>
+  listUsers: () => Promise<SlackUser[]>
   registerChannelListener: (channelId: string, cb: (msg: any, client?: any) => void) => void
   unregisterChannelListener: (channelId: string) => void
 }
@@ -49,7 +60,7 @@ async function validateSlackToken(botToken: string): Promise<{ ok: boolean; erro
 }
 
 export function createSlackBot(options: SlackBotOptions): SlackBot {
-  const { botToken, appToken, channel, io, internalBus, dbPath, sourcesDbPath } = options
+  const { botToken, appToken, channel, adminUserId, io, internalBus, dbPath, sourcesDbPath } = options
   let connected = false
   let app: App | null = null
   const channelListeners = new Map<string, (msg: any, client?: any) => void>()
@@ -336,6 +347,26 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     return channels
   }
 
+  async function listUsers(): Promise<SlackUser[]> {
+    if (!app) return []
+    const users: SlackUser[] = []
+    let cursor: string | undefined
+    do {
+      const result = await app.client.users.list({ limit: 200, cursor })
+      for (const u of result.members || []) {
+        if (u.deleted) continue
+        users.push({
+          id: u.id!,
+          name: u.name || u.id!,
+          realName: u.real_name || u.name || u.id!,
+          isBot: u.is_bot || false,
+        })
+      }
+      cursor = result.response_metadata?.next_cursor || undefined
+    } while (cursor)
+    return users
+  }
+
   return {
     start: async () => {
       // Validate bot token with plain fetch first — if invalid, bail early
@@ -367,12 +398,35 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     },
     postQuestion,
     listChannels,
+    listUsers,
     postNotification: async (message: string) => {
       if (!app) return
       try {
         await app.client.chat.postMessage({ channel, text: message })
       } catch (err) {
         console.error('[SlackBot] Failed to post notification:', err)
+      }
+    },
+    sendDM: async (userId: string, message: string) => {
+      if (!app) return
+      try {
+        const dm = await app.client.conversations.open({ users: userId })
+        if (dm.channel?.id) {
+          await app.client.chat.postMessage({ channel: dm.channel.id, text: message })
+        }
+      } catch (err) {
+        console.error('[SlackBot] Failed to send DM:', err)
+      }
+    },
+    sendAdminDM: async (message: string) => {
+      if (!app || !adminUserId) return
+      try {
+        const dm = await app.client.conversations.open({ users: adminUserId })
+        if (dm.channel?.id) {
+          await app.client.chat.postMessage({ channel: dm.channel.id, text: message })
+        }
+      } catch (err) {
+        console.error('[SlackBot] Failed to send admin DM:', err)
       }
     },
     replyInThread: async (channelId: string, threadTs: string, text: string) => {

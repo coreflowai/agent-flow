@@ -156,7 +156,7 @@ async function analyzeUser(
     console.error(`[InsightScheduler] Analysis failed for ${userId}:`, result.error)
     io.emit('insight:error', { userId, error: result.error, timestamp: Date.now() })
     if (slackBot?.bot?.isConnected()) {
-      await slackBot.bot.postNotification(`⚠️ Insight analysis failed for *${userId}*:\n>${result.error}`)
+      await slackBot.bot.sendAdminDM(`⚠️ Insight analysis failed for *${userId}*:\n>${result.error}`)
     }
     return
   }

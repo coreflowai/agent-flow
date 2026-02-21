@@ -87,6 +87,110 @@ const integrationsView = document.getElementById('integrations-view')
 const btnIntegrations = document.getElementById('btn-integrations')
 const integrationsBack = document.getElementById('integrations-back')
 
+// --- URL routing ---
+let _skipPush = false // flag to avoid pushing URL during programmatic navigation
+
+function navigate(path, replace = false) {
+  if (window.location.pathname === path) return
+  if (replace) history.replaceState(null, '', path)
+  else history.pushState(null, '', path)
+}
+
+function routeFromUrl() {
+  const path = window.location.pathname
+  _skipPush = true
+
+  // /sessions/:id
+  const sessionMatch = path.match(/^\/sessions\/([^/]+)$/)
+  if (sessionMatch) {
+    const id = sessionMatch[1]
+    // Check if session exists in our list
+    const session = sessions.find(s => s.id === id)
+    if (session) {
+      switchView('list')
+      selectedSessionIdx = filteredSessions.findIndex(s => s.id === id)
+      selectSession(id)
+    } else {
+      // Try fetching from API — session might not be in list yet
+      fetch(`/api/sessions/${id}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.id) {
+            // Add to sessions if not present
+            if (!sessions.find(s => s.id === id)) {
+              sessions.unshift(data)
+              applyFilter()
+            }
+            _skipPush = true
+            switchView('list')
+            selectedSessionIdx = filteredSessions.findIndex(s => s.id === id)
+            selectSession(id)
+            _skipPush = false
+          } else {
+            navigate('/', true)
+            switchView('bubbles')
+          }
+        })
+        .catch(() => {
+          navigate('/', true)
+          switchView('bubbles')
+        })
+      _skipPush = false
+      return
+    }
+    _skipPush = false
+    return
+  }
+
+  // /insights/:id
+  const insightMatch = path.match(/^\/insights\/([^/]+)$/)
+  if (insightMatch) {
+    switchView('insights')
+    // Select after insights load
+    const trySelect = () => {
+      if (insightsLoaded) {
+        _skipPush = true
+        selectInsight(insightMatch[1])
+        _skipPush = false
+      } else {
+        setTimeout(trySelect, 100)
+      }
+    }
+    trySelect()
+    _skipPush = false
+    return
+  }
+
+  // /insights
+  if (path === '/insights') {
+    switchView('insights')
+    _skipPush = false
+    return
+  }
+
+  // /feed
+  if (path === '/feed') {
+    switchView('feed')
+    _skipPush = false
+    return
+  }
+
+  // /integrations
+  if (path === '/integrations') {
+    switchView('integrations')
+    _skipPush = false
+    return
+  }
+
+  // Default: / → bubbles
+  switchView('bubbles')
+  _skipPush = false
+}
+
+window.addEventListener('popstate', () => {
+  routeFromUrl()
+})
+
 // --- View switching ---
 function switchView(view) {
   currentView = view
@@ -100,15 +204,19 @@ function switchView(view) {
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
     renderBubbles()
+    if (!_skipPush) navigate('/')
   } else if (view === 'list') {
     listView.classList.remove('hidden')
+    // URL is pushed by selectSession, not here
   } else if (view === 'insights') {
     insightsView.classList.remove('hidden')
     if (!insightsLoaded) loadInsights()
     else renderInsights()
+    if (!_skipPush && !selectedInsightId) navigate('/insights')
   } else if (view === 'integrations') {
     integrationsView.classList.remove('hidden')
     showIntegrationPanel(currentIntegration)
+    if (!_skipPush) navigate('/integrations')
   } else if (view === 'feed') {
     if (feedViewEl) feedViewEl.classList.remove('hidden')
     if (!feedLoaded) {
@@ -116,6 +224,7 @@ function switchView(view) {
       if (dataSources.length === 0) loadSources()
       loadFeedEntries()
     }
+    if (!_skipPush) navigate('/feed')
   }
 }
 
@@ -198,10 +307,19 @@ socket.on('disconnect', () => {
 })
 
 // --- Sessions ---
+let _initialRouted = false
 socket.on('sessions:list', (list) => {
   sessions = list
   updateUserFilterDropdown()
   applyFilter()
+
+  // On first load, route based on URL instead of defaulting to bubbles
+  if (!_initialRouted) {
+    _initialRouted = true
+    routeFromUrl()
+    return
+  }
+
   if (currentView === 'bubbles') {
     renderBubbles()
   } else if (!currentSessionId && filteredSessions.length > 0) {
@@ -549,6 +667,7 @@ function selectSession(sessionId) {
   socket.emit('subscribe', sessionId)
   renderSessionList()
   mobileShowEvents()
+  if (!_skipPush) navigate(`/sessions/${sessionId}`)
 }
 
 function showEmptyState() {
@@ -1682,6 +1801,7 @@ function selectInsight(id) {
 
   renderInsightDetail(id)
   insightsMobileShowDetail()
+  if (!_skipPush) navigate(`/insights/${id}`)
 }
 
 function renderInsightDetail(id) {
@@ -1967,6 +2087,38 @@ async function initSlackChannelDropdown() {
   if (el) el.id = 'slack-channel' // preserve the ID on the cloned element
 }
 
+// Slack user cache
+let slackUsersCache = null
+async function fetchSlackUsers() {
+  if (slackUsersCache) return slackUsersCache
+  try {
+    const res = await fetch('/api/integrations/slack/users', { credentials: 'include' })
+    const data = await res.json()
+    if (data.users && data.users.length > 0) {
+      slackUsersCache = data.users.filter(u => !u.isBot)
+      return slackUsersCache
+    }
+  } catch {}
+  return null
+}
+
+async function initSlackAdminUserDropdown() {
+  const users = await fetchSlackUsers()
+  if (!users) return
+  const el = setupSearchableDropdown(
+    document.getElementById('slack-admin-user'),
+    document.getElementById('slack-admin-user-id'),
+    document.getElementById('slack-admin-user-dropdown'),
+    users,
+    {
+      formatItem: (u) => `${u.realName} <span class="opacity-40">@${u.name}</span>`,
+      formatLabel: (u) => u.realName,
+      onSelect: (u) => {},
+    }
+  )
+  if (el) el.id = 'slack-admin-user'
+}
+
 function toggleTokenVisibility(input, btn) {
   if (input.type === 'password') {
     input.type = 'text'
@@ -2011,9 +2163,13 @@ async function loadSlackConfig() {
       slackAppTokenInput.value = data.appToken || ''
       if (channelInput) channelInput.value = data.channel || ''
       if (channelIdInput) channelIdInput.value = data.channel || ''
+      const adminUserInput = document.getElementById('slack-admin-user')
+      const adminUserIdInput = document.getElementById('slack-admin-user-id')
+      if (adminUserIdInput) adminUserIdInput.value = data.adminUserId || ''
       setSlackStatus(data.connected)
       if (data.connected) {
         slackChannelsCache = null // reset cache on config reload
+        slackUsersCache = null
         initSlackChannelDropdown().then(() => {
           const chId = data.channel
           if (chId && slackChannelsCache) {
@@ -2021,6 +2177,16 @@ async function loadSlackConfig() {
             if (ch) {
               const input = document.getElementById('slack-channel')
               if (input) input.value = `#${ch.name}`
+            }
+          }
+        })
+        initSlackAdminUserDropdown().then(() => {
+          const uid = data.adminUserId
+          if (uid && slackUsersCache) {
+            const u = slackUsersCache.find(u => u.id === uid)
+            if (u) {
+              const input = document.getElementById('slack-admin-user')
+              if (input) input.value = u.realName
             }
           }
         })
@@ -2049,6 +2215,7 @@ slackSaveBtn.addEventListener('click', async () => {
         botToken: slackBotTokenInput.value.trim(),
         appToken: slackAppTokenInput.value.trim(),
         channel: (document.getElementById('slack-channel-id')?.value || document.getElementById('slack-channel')?.value || '').trim(),
+        adminUserId: (document.getElementById('slack-admin-user-id')?.value || '').trim(),
       }),
     })
     const data = await res.json()
@@ -2324,6 +2491,116 @@ githubTestBtn.addEventListener('click', async () => {
   githubTestBtn.textContent = 'Test Connection'
 })
 
+// --- Integrations: Datadog config ---
+const datadogApiKeyInput = document.getElementById('datadog-api-key')
+const datadogAppKeyInput = document.getElementById('datadog-app-key')
+const datadogSiteSelect = document.getElementById('datadog-site')
+const datadogSaveBtn = document.getElementById('datadog-save-btn')
+const datadogTestBtn = document.getElementById('datadog-test-btn')
+const datadogSaveStatus = document.getElementById('datadog-save-status')
+const datadogStatusDot = document.getElementById('datadog-status-dot')
+const datadogStatusText = document.getElementById('datadog-status-text')
+const datadogToggleApiKey = document.getElementById('datadog-toggle-api-key')
+const datadogToggleAppKey = document.getElementById('datadog-toggle-app-key')
+
+datadogToggleApiKey.addEventListener('click', () => toggleTokenVisibility(datadogApiKeyInput, datadogToggleApiKey))
+datadogToggleAppKey.addEventListener('click', () => toggleTokenVisibility(datadogAppKeyInput, datadogToggleAppKey))
+
+function setDatadogStatus(connected) {
+  if (connected) {
+    datadogStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-success'
+    datadogStatusText.textContent = 'Connected'
+    datadogStatusText.className = 'text-[10px] text-success'
+  } else {
+    datadogStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-base-300'
+    datadogStatusText.textContent = 'Not connected'
+    datadogStatusText.className = 'text-[10px] opacity-50'
+  }
+}
+
+function showDatadogSaveStatus(msg, isError) {
+  datadogSaveStatus.textContent = msg
+  datadogSaveStatus.className = `text-xs ${isError ? 'text-error' : 'text-success'}`
+  datadogSaveStatus.classList.remove('hidden')
+  setTimeout(() => datadogSaveStatus.classList.add('hidden'), 4000)
+}
+
+let datadogConfigured = false
+async function loadDatadogConfig() {
+  try {
+    const res = await fetch('/api/integrations/datadog', { credentials: 'include' })
+    const data = await res.json()
+    if (data.configured) {
+      datadogApiKeyInput.value = data.apiKey || ''
+      datadogAppKeyInput.value = data.appKey || ''
+      if (data.site) datadogSiteSelect.value = data.site
+      datadogConfigured = true
+      testDatadogConnection(true)
+    } else {
+      datadogApiKeyInput.value = ''
+      datadogAppKeyInput.value = ''
+      datadogConfigured = false
+      setDatadogStatus(false)
+    }
+  } catch {
+    setDatadogStatus(false)
+  }
+}
+
+async function testDatadogConnection(silent) {
+  try {
+    const res = await fetch('/api/integrations/datadog/test', { method: 'POST', credentials: 'include' })
+    const data = await res.json()
+    if (data.ok) {
+      setDatadogStatus(true)
+      if (!silent) showDatadogSaveStatus('API key is valid', false)
+    } else {
+      setDatadogStatus(false)
+      if (!silent) showDatadogSaveStatus(data.error || 'Connection failed', true)
+    }
+  } catch {
+    setDatadogStatus(false)
+    if (!silent) showDatadogSaveStatus('Network error', true)
+  }
+}
+
+datadogSaveBtn.addEventListener('click', async () => {
+  datadogSaveBtn.disabled = true
+  datadogSaveBtn.textContent = 'Saving...'
+  try {
+    const res = await fetch('/api/integrations/datadog', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: datadogApiKeyInput.value.trim(),
+        appKey: datadogAppKeyInput.value.trim(),
+        site: datadogSiteSelect.value,
+      }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      showDatadogSaveStatus('Saved successfully', false)
+      datadogConfigured = true
+      await loadDatadogConfig()
+    } else {
+      showDatadogSaveStatus(data.error || 'Failed to save', true)
+    }
+  } catch {
+    showDatadogSaveStatus('Network error', true)
+  }
+  datadogSaveBtn.disabled = false
+  datadogSaveBtn.textContent = 'Save'
+})
+
+datadogTestBtn.addEventListener('click', async () => {
+  datadogTestBtn.disabled = true
+  datadogTestBtn.textContent = 'Testing...'
+  await testDatadogConnection(false)
+  datadogTestBtn.disabled = false
+  datadogTestBtn.textContent = 'Test Connection'
+})
+
 // --- Integration Nav Switching ---
 let currentIntegration = 'slack'
 
@@ -2332,8 +2609,9 @@ function showIntegrationPanel(integration) {
   const slackPanel = document.getElementById('slack-panel')
   const discordPanel = document.getElementById('discord-panel')
   const githubPanel = document.getElementById('github-panel')
+  const datadogPanel = document.getElementById('datadog-panel')
   const sourcesPanel = document.getElementById('sources-panel')
-  if (!slackPanel || !discordPanel || !githubPanel || !sourcesPanel) return
+  if (!slackPanel || !discordPanel || !githubPanel || !datadogPanel || !sourcesPanel) return
 
   // Update nav items
   document.querySelectorAll('.integration-nav-item').forEach(el => {
@@ -2347,6 +2625,7 @@ function showIntegrationPanel(integration) {
   slackPanel.classList.add('hidden')
   discordPanel.classList.add('hidden')
   githubPanel.classList.add('hidden')
+  datadogPanel.classList.add('hidden')
   sourcesPanel.classList.add('hidden')
 
   if (integration === 'slack') {
@@ -2358,6 +2637,9 @@ function showIntegrationPanel(integration) {
   } else if (integration === 'github') {
     githubPanel.classList.remove('hidden')
     loadGithubConfig()
+  } else if (integration === 'datadog') {
+    datadogPanel.classList.remove('hidden')
+    loadDatadogConfig()
   } else if (integration === 'sources') {
     sourcesPanel.classList.remove('hidden')
     loadSources()

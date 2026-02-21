@@ -470,6 +470,10 @@
           <svg width="16" height="16" viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
           <span class="text-xs font-medium">GitHub</span>
         </div>
+        <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-transparent flex items-center gap-2" data-integration="datadog">
+          <svg width="16" height="16" viewBox="0 0 800.55 856.85" fill="none"><path d="M670.38 608.27l-71.24-46.97-59.43 99.27-17.64-132.35 78.94-24.51c-9.55-18.82-22.6-45.36-32.68-66.14l-55.34 15.6-37.81-68.87 57.39-32.02c-12.37-12.78-24.82-26.25-39.07-42.53l-49.56 31.58-19.72-26.64 38.52-62.97c-15.99-12.48-32.94-22.05-50.15-28.9l-22.89 52.18-29.08-5.47 11.09-62.77c-20.68-3.03-41.11-2.1-60.3 1.94l4.72 61.66-25.87 8.54-28.07-51.53c-17.35 9.04-33.38 21.33-47.81 36.82l42.17 48.08-18.7 17.94-49.84-42.99c-9.78 13.33-18.35 28.43-25.28 45.44l55.14 32.44-12.62 24.4-60.49-24.57c-4.16 16.68-6.77 34.86-7.4 54.79l61.22 9.74-3.6 26.97-62.44 1.28c2.84 27.24 9.35 50.62 18.89 71.05l175.69-105.49 128.64 93.59c42.97-24.06 73.63-67.41 73.63-67.41l29.82 20.89s-35.96 55.89-95.77 84.59l20.08 15.44-126.72 83.62c12.38 12.84 21.14 18.42 39.3 28.87l46.6-32.12 78.07 72.17 183.08-123.07zM437.83 540.89l-118.34-82.01 3.63-4.73c24.38-28.92 49.53-47.83 76.38-55.79 27.43-8.13 48.82-3.92 64.29 3.34l3.04 1.43-29.0 137.76zm27.2-150.36c-30.36 7.53-57.86 26.61-85.61 58.72l115.59 77.15 26.41-125.44c-16.66-8.97-36.16-15.67-56.39-10.43z" fill="#632CA6"/></svg>
+          <span class="text-xs font-medium">Datadog</span>
+        </div>
         <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-transparent flex items-center gap-2" data-integration="sources">
           <i data-lucide="rss" class="w-4 h-4 opacity-60"></i>
           <span class="text-xs font-medium">Data Sources</span>
@@ -664,6 +668,69 @@
         </div>
       </div>
 
+      <!-- Datadog Panel -->
+      <div id="datadog-panel" class="hidden max-w-2xl mx-auto px-5 sm:px-8 py-6">
+        <!-- Status -->
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-base font-semibold">Datadog Integration</h2>
+          <div id="datadog-status-badge" class="flex items-center gap-1.5">
+            <span id="datadog-status-dot" class="inline-block w-2 h-2 rounded-full bg-base-300"></span>
+            <span id="datadog-status-text" class="text-[10px] opacity-50">Not configured</span>
+          </div>
+        </div>
+
+        <!-- Config Form -->
+        <div class="space-y-4 mb-6">
+          <div>
+            <label class="label text-xs py-0.5 font-medium">API Key</label>
+            <div class="flex gap-2">
+              <input type="password" id="datadog-api-key" class="input input-sm input-bordered flex-1 text-xs font-mono" placeholder="Datadog API key..." />
+              <button id="datadog-toggle-api-key" class="btn btn-xs btn-ghost opacity-50" title="Toggle visibility">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Application Key</label>
+            <div class="flex gap-2">
+              <input type="password" id="datadog-app-key" class="input input-sm input-bordered flex-1 text-xs font-mono" placeholder="Datadog application key..." />
+              <button id="datadog-toggle-app-key" class="btn btn-xs btn-ghost opacity-50" title="Toggle visibility">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Site</label>
+            <select id="datadog-site" class="select select-sm select-bordered w-full text-xs">
+              <option value="datadoghq.com">datadoghq.com (US1)</option>
+              <option value="us3.datadoghq.com">us3.datadoghq.com (US3)</option>
+              <option value="us5.datadoghq.com">us5.datadoghq.com (US5)</option>
+              <option value="datadoghq.eu">datadoghq.eu (EU)</option>
+              <option value="ap1.datadoghq.com">ap1.datadoghq.com (AP1)</option>
+            </select>
+          </div>
+          <div class="flex gap-2">
+            <button id="datadog-save-btn" class="btn btn-sm btn-primary text-xs">Save</button>
+            <button id="datadog-test-btn" class="btn btn-sm btn-ghost text-xs">Test Connection</button>
+          </div>
+          <div id="datadog-save-status" class="text-xs hidden"></div>
+        </div>
+
+        <!-- Setup Guide -->
+        <div class="border-t border-base-300 pt-6">
+          <h3 class="text-sm font-semibold mb-3 opacity-70">Setup Guide</h3>
+          <ol class="text-xs opacity-60 space-y-2 list-decimal pl-5 leading-relaxed">
+            <li>Go to <a href="https://app.datadoghq.com/organization-settings/api-keys" target="_blank" class="underline">Organization Settings &rarr; API Keys</a></li>
+            <li>Click <strong>New Key</strong> and give it a name (e.g. "AgentFlow")</li>
+            <li>Copy the <strong>API Key</strong> and paste it above</li>
+            <li>Go to <a href="https://app.datadoghq.com/organization-settings/application-keys" target="_blank" class="underline">Organization Settings &rarr; Application Keys</a></li>
+            <li>Click <strong>New Key</strong>, copy the <strong>Application Key</strong> and paste it above</li>
+            <li>Select the correct <strong>Site</strong> for your Datadog account</li>
+            <li>The Slack bot will use these keys for the <code class="bg-base-200 px-1 rounded">datadog_api</code> tool</li>
+          </ol>
+        </div>
+      </div>
+
       <!-- Slack Panel -->
       <div id="slack-panel" class="max-w-2xl mx-auto px-5 sm:px-8 py-6">
         <!-- Status -->
@@ -701,6 +768,14 @@
               <input type="text" id="slack-channel" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="Search channels or enter ID..." autocomplete="off" />
               <input type="hidden" id="slack-channel-id" />
               <div id="slack-channel-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
+            </div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Admin User <span class="opacity-40">(DM notifications)</span></label>
+            <div class="relative" id="slack-admin-user-dropdown-wrap">
+              <input type="text" id="slack-admin-user" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="Search users or enter ID..." autocomplete="off" />
+              <input type="hidden" id="slack-admin-user-id" />
+              <div id="slack-admin-user-dropdown" class="hidden absolute z-50 left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"></div>
             </div>
           </div>
           <div class="flex gap-2">
