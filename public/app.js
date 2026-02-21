@@ -2225,6 +2225,105 @@ async function fetchDiscordChannels(guildId) {
   return null
 }
 
+// --- Integrations: GitHub config ---
+const githubTokenInput = document.getElementById('github-token')
+const githubSaveBtn = document.getElementById('github-save-btn')
+const githubTestBtn = document.getElementById('github-test-btn')
+const githubSaveStatus = document.getElementById('github-save-status')
+const githubStatusDot = document.getElementById('github-status-dot')
+const githubStatusText = document.getElementById('github-status-text')
+const githubToggleToken = document.getElementById('github-toggle-token')
+
+githubToggleToken.addEventListener('click', () => toggleTokenVisibility(githubTokenInput, githubToggleToken))
+
+function setGithubStatus(connected) {
+  if (connected) {
+    githubStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-success'
+    githubStatusText.textContent = 'Connected'
+    githubStatusText.className = 'text-[10px] text-success'
+  } else {
+    githubStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-base-300'
+    githubStatusText.textContent = 'Not connected'
+    githubStatusText.className = 'text-[10px] opacity-50'
+  }
+}
+
+function showGithubSaveStatus(msg, isError) {
+  githubSaveStatus.textContent = msg
+  githubSaveStatus.className = `text-xs ${isError ? 'text-error' : 'text-success'}`
+  githubSaveStatus.classList.remove('hidden')
+  setTimeout(() => githubSaveStatus.classList.add('hidden'), 4000)
+}
+
+let githubConfigured = false
+async function loadGithubConfig() {
+  try {
+    const res = await fetch('/api/integrations/github', { credentials: 'include' })
+    const data = await res.json()
+    if (data.configured) {
+      githubTokenInput.value = data.token || ''
+      githubConfigured = true
+      testGithubConnection(true)
+    } else {
+      githubTokenInput.value = ''
+      githubConfigured = false
+      setGithubStatus(false)
+    }
+  } catch {
+    setGithubStatus(false)
+  }
+}
+
+async function testGithubConnection(silent) {
+  try {
+    const res = await fetch('/api/integrations/github/test', { method: 'POST', credentials: 'include' })
+    const data = await res.json()
+    if (data.ok) {
+      setGithubStatus(true)
+      if (!silent) showGithubSaveStatus(`Connected as ${data.login}${data.name ? ' (' + data.name + ')' : ''}`, false)
+    } else {
+      setGithubStatus(false)
+      if (!silent) showGithubSaveStatus(data.error || 'Connection failed', true)
+    }
+  } catch {
+    setGithubStatus(false)
+    if (!silent) showGithubSaveStatus('Network error', true)
+  }
+}
+
+githubSaveBtn.addEventListener('click', async () => {
+  githubSaveBtn.disabled = true
+  githubSaveBtn.textContent = 'Saving...'
+  try {
+    const res = await fetch('/api/integrations/github', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: githubTokenInput.value.trim() }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      showGithubSaveStatus('Saved successfully', false)
+      githubConfigured = true
+      await loadGithubConfig()
+    } else {
+      showGithubSaveStatus(data.error || 'Failed to save', true)
+    }
+  } catch {
+    showGithubSaveStatus('Network error', true)
+  }
+  githubSaveBtn.disabled = false
+  githubSaveBtn.textContent = 'Save'
+})
+
+githubTestBtn.addEventListener('click', async () => {
+  githubTestBtn.disabled = true
+  githubTestBtn.textContent = 'Testing...'
+  await testGithubConnection(false)
+  githubTestBtn.disabled = false
+  githubTestBtn.textContent = 'Test Connection'
+})
+
 // --- Integration Nav Switching ---
 let currentIntegration = 'slack'
 
@@ -2232,8 +2331,9 @@ function showIntegrationPanel(integration) {
   currentIntegration = integration
   const slackPanel = document.getElementById('slack-panel')
   const discordPanel = document.getElementById('discord-panel')
+  const githubPanel = document.getElementById('github-panel')
   const sourcesPanel = document.getElementById('sources-panel')
-  if (!slackPanel || !discordPanel || !sourcesPanel) return
+  if (!slackPanel || !discordPanel || !githubPanel || !sourcesPanel) return
 
   // Update nav items
   document.querySelectorAll('.integration-nav-item').forEach(el => {
@@ -2246,6 +2346,7 @@ function showIntegrationPanel(integration) {
   // Hide all panels
   slackPanel.classList.add('hidden')
   discordPanel.classList.add('hidden')
+  githubPanel.classList.add('hidden')
   sourcesPanel.classList.add('hidden')
 
   if (integration === 'slack') {
@@ -2254,6 +2355,9 @@ function showIntegrationPanel(integration) {
   } else if (integration === 'discord') {
     discordPanel.classList.remove('hidden')
     loadDiscordConfig()
+  } else if (integration === 'github') {
+    githubPanel.classList.remove('hidden')
+    loadGithubConfig()
   } else if (integration === 'sources') {
     sourcesPanel.classList.remove('hidden')
     loadSources()

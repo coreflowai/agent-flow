@@ -104,6 +104,7 @@ Tests use the server factory with ephemeral `/tmp` databases. Each test creates 
 | `PORT` | `3333` | Server port |
 | `AGENT_FLOW_DB` | `agent-flow.db` | SQLite database path |
 | `AGENT_FLOW_URL` | `http://localhost:3333` | Used by adapters to POST events |
+| `GITHUB_TOKEN` | — | GitHub API token for Slack bot code search tools |
 
 ## Production
 

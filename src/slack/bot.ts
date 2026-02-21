@@ -67,18 +67,33 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     if (!message.files || !Array.isArray(message.files)) return []
     const images: Array<{ mediaType: string; data: string }> = []
     for (const file of message.files) {
-      if (!IMAGE_MIME_TYPES.has(file.mimetype)) continue
-      if (file.size > MAX_IMAGE_SIZE) continue
-      if (!file.url_private_download) continue
+      if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
+        console.log(`[SlackBot] Skipping file "${file.name}" — unsupported mime type: ${file.mimetype}`)
+        continue
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        console.log(`[SlackBot] Skipping file "${file.name}" — too large: ${(file.size / 1024 / 1024).toFixed(1)}MB`)
+        continue
+      }
+      if (!file.url_private_download) {
+        console.log(`[SlackBot] Skipping file "${file.name}" — no download URL`)
+        continue
+      }
       try {
         const res = await fetch(file.url_private_download, {
           headers: { 'Authorization': `Bearer ${botToken}` },
         })
-        if (!res.ok) continue
+        if (!res.ok) {
+          console.error(`[SlackBot] Image download failed for "${file.name}": HTTP ${res.status}`)
+          continue
+        }
         const buf = await res.arrayBuffer()
         const base64 = Buffer.from(buf).toString('base64')
         images.push({ mediaType: file.mimetype, data: base64 })
-      } catch {}
+        console.log(`[SlackBot] Image extracted: "${file.name}" (${file.mimetype}, ${(file.size / 1024).toFixed(0)}KB)`)
+      } catch (err) {
+        console.error('[SlackBot] Image download failed for', file.name, ':', err)
+      }
     }
     return images
   }

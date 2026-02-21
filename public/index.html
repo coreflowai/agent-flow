@@ -466,6 +466,10 @@
           <svg width="16" height="16" viewBox="0 0 127.14 96.36" fill="none"><path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0 105.89 105.89 0 0 0 19.39 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2.03a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2.03a68.68 68.68 0 0 1-10.87 5.19 77.21 77.21 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15zM42.45 65.69C36.18 65.69 31 60 31 53.05s5-12.68 11.45-12.68S53.98 46 53.89 53.05 48.84 65.69 42.45 65.69zm42.24 0C78.41 65.69 73.25 60 73.25 53.05s5-12.68 11.44-12.68S96.23 46 96.14 53.05 91.08 65.69 84.69 65.69z" fill="#5865F2"/></svg>
           <span class="text-xs font-medium">Discord</span>
         </div>
+        <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-transparent flex items-center gap-2" data-integration="github">
+          <svg width="16" height="16" viewBox="0 0 98 96" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>
+          <span class="text-xs font-medium">GitHub</span>
+        </div>
         <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-transparent flex items-center gap-2" data-integration="sources">
           <i data-lucide="rss" class="w-4 h-4 opacity-60"></i>
           <span class="text-xs font-medium">Data Sources</span>
@@ -613,6 +617,49 @@
             <li>Go to <strong>OAuth2</strong> &rarr; URL Generator &rarr; select <code class="bg-base-200 px-1 rounded">bot</code> scope with permissions: <code class="bg-base-200 px-1 rounded">Read Messages/View Channels</code>, <code class="bg-base-200 px-1 rounded">Read Message History</code></li>
             <li>Use the generated URL to invite the bot to your server</li>
             <li>Paste the bot token above and test the connection</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- GitHub Panel -->
+      <div id="github-panel" class="hidden max-w-2xl mx-auto px-5 sm:px-8 py-6">
+        <!-- Status -->
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-base font-semibold">GitHub Integration</h2>
+          <div id="github-status-badge" class="flex items-center gap-1.5">
+            <span id="github-status-dot" class="inline-block w-2 h-2 rounded-full bg-base-300"></span>
+            <span id="github-status-text" class="text-[10px] opacity-50">Not configured</span>
+          </div>
+        </div>
+
+        <!-- Config Form -->
+        <div class="space-y-4 mb-6">
+          <div>
+            <label class="label text-xs py-0.5 font-medium">Personal Access Token</label>
+            <div class="flex gap-2">
+              <input type="password" id="github-token" class="input input-sm input-bordered flex-1 text-xs font-mono" placeholder="ghp_... or github_pat_..." />
+              <button id="github-toggle-token" class="btn btn-xs btn-ghost opacity-50" title="Toggle visibility">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button id="github-save-btn" class="btn btn-sm btn-primary text-xs">Save</button>
+            <button id="github-test-btn" class="btn btn-sm btn-ghost text-xs">Test Connection</button>
+          </div>
+          <div id="github-save-status" class="text-xs hidden"></div>
+        </div>
+
+        <!-- Setup Guide -->
+        <div class="border-t border-base-300 pt-6">
+          <h3 class="text-sm font-semibold mb-3 opacity-70">Setup Guide</h3>
+          <ol class="text-xs opacity-60 space-y-2 list-decimal pl-5 leading-relaxed">
+            <li>Go to <a href="https://github.com/settings/tokens" target="_blank" class="underline">GitHub Settings &rarr; Tokens</a></li>
+            <li>Click <strong>Generate new token</strong> (fine-grained recommended)</li>
+            <li>Select the repositories you want to search/read</li>
+            <li>Grant <strong>Contents</strong> read access (for code search and file reading)</li>
+            <li>Copy the token and paste it above</li>
+            <li>The Slack bot will use this token for <code class="bg-base-200 px-1 rounded">github_search</code> and <code class="bg-base-200 px-1 rounded">github_read_file</code> tools</li>
           </ol>
         </div>
       </div>

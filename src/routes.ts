@@ -703,6 +703,56 @@ export const AgentFlowPlugin = async () => {
       }
     }
 
+    // --- GitHub Integration Config ---
+
+    // GET /api/integrations/github — get config (token masked)
+    if (req.method === 'GET' && pathname === '/api/integrations/github') {
+      const config = getIntegrationConfig('github')
+      if (!config) return json({ configured: false })
+      const c = config.config as Record<string, string>
+      return json({
+        configured: true,
+        token: c.token ? maskToken(c.token) : null,
+      })
+    }
+
+    // POST /api/integrations/github — save token
+    if (req.method === 'POST' && pathname === '/api/integrations/github') {
+      try {
+        const body = (await req.json()) as { token?: string }
+        const existing = getIntegrationConfig('github')
+        const prev = (existing?.config || {}) as Record<string, string>
+        const config = {
+          token: body.token && !body.token.includes('•') ? body.token : prev.token || '',
+        }
+        setIntegrationConfig('github', config)
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to save config' }, 500)
+      }
+    }
+
+    // POST /api/integrations/github/test — test token validity
+    if (req.method === 'POST' && pathname === '/api/integrations/github/test') {
+      const config = getIntegrationConfig('github')
+      const token = (config?.config as any)?.token
+      if (!token) return json({ ok: false, error: 'Token not configured' })
+      try {
+        const res = await fetch('https://api.github.com/user', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'AgentFlow/1.0',
+          },
+        })
+        const data = await res.json() as any
+        if (!res.ok) return json({ ok: false, error: data.message || 'Auth failed' })
+        return json({ ok: true, login: data.login, name: data.name })
+      } catch (err: any) {
+        return json({ ok: false, error: err.message || 'Network error' })
+      }
+    }
+
     // --- Data Sources API ---
 
     // GET /api/sources — list all data sources with entry counts
