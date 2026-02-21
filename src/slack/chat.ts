@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { tools as dbTools, executeSqlTool, executeSchemaTools } from '../insights/analyzer'
-import { getIntegrationConfig } from '../db/slack'
+import { integrationToolDefinitions, executeIntegrationTool } from './tools'
+import { MAX_TOOL_RESULT } from './tools/types'
 
 type ImageInput = { mediaType: string; data: string }
 
@@ -37,8 +38,13 @@ When you don't know something, use your tools to look it up. Never guess or fabr
 - Search the web using the \`web_search\` tool when someone asks about current events, docs, or anything you'd google
 - Read URLs shared in conversation using the \`web_fetch\` tool
 - Understand images people share
-- Search code, issues, and PRs on GitHub using the \`github_search\` tool
-- Read files from GitHub repos using the \`github_read_file\` tool
+- **GitHub**: Search code/issues (\`github_search\`), read files (\`github_read_file\`), browse repos (\`github_list_repos\`, \`github_list_directory\`), read PRs (\`github_read_pr\`, \`github_list_prs\`), read issues (\`github_read_issue\`, \`github_list_issues\`)
+- **Discord**: List servers (\`discord_list_guilds\`), list channels (\`discord_list_channels\`), read messages (\`discord_read_messages\`)
+- **Slack**: List channels (\`slack_list_channels\`), read channel history (\`slack_read_messages\`), search messages (\`slack_search_messages\`)
+- **Datadog**: Query the Datadog API (\`datadog_api\`). Common endpoints:
+  - Search logs: POST /api/v2/logs/events/search with body { "filter": { "query": "@service:foo", "from": "now-1h", "to": "now" }, "sort": "-timestamp", "page": { "limit": 10 } }
+  - List monitors: GET /api/v1/monitor
+  - Get metrics: GET /api/v1/query?from=<unix>&to=<unix>&query=<metric_query>
 - Query the AgentFlow database using \`schema\` and \`sql\` tools when people ask about agent sessions, tool usage, errors, etc.
 
 The AgentFlow database tracks AI agent coding sessions (Claude Code, Codex CLI, Open Code), events within sessions, data sources (Slack/Discord/RSS feeds), and ingested messages.
@@ -87,7 +93,7 @@ export function chunkForSlack(text: string, maxLen = 3900): string[] {
   return chunks
 }
 
-// Extended tools: DB tools + web tools
+// Combine DB tools, web search, and all integration tools
 const chatTools: Anthropic.Messages.ToolUnion[] = [
   ...dbTools,
   {
@@ -95,199 +101,8 @@ const chatTools: Anthropic.Messages.ToolUnion[] = [
     name: 'web_search',
     max_uses: 5,
   } as Anthropic.Messages.WebSearchTool20250305,
-  {
-    name: 'web_fetch',
-    description: 'Fetch a URL and return its text content. Useful for reading links shared in conversation. Returns plain text with HTML tags stripped, truncated to 30KB.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        url: {
-          type: 'string',
-          description: 'The URL to fetch',
-        },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'github_search',
-    description: 'Search code, issues, or PRs on GitHub. Returns top 10 results with file paths, repo names, and matched content.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Search query (GitHub search syntax supported)',
-        },
-        type: {
-          type: 'string',
-          enum: ['code', 'issues'],
-          description: 'Type of search: "code" for code/files, "issues" for issues and PRs. Defaults to "code".',
-        },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'github_read_file',
-    description: 'Read a file from a GitHub repository. Returns the decoded file content.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        owner: {
-          type: 'string',
-          description: 'Repository owner (user or org)',
-        },
-        repo: {
-          type: 'string',
-          description: 'Repository name',
-        },
-        path: {
-          type: 'string',
-          description: 'File path within the repository',
-        },
-        ref: {
-          type: 'string',
-          description: 'Branch, tag, or commit SHA. Defaults to the repo default branch.',
-        },
-      },
-      required: ['owner', 'repo', 'path'],
-    },
-  },
+  ...integrationToolDefinitions,
 ]
-
-const MAX_FETCH_SIZE = 30_000
-
-async function executeWebFetch(url: string): Promise<string> {
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'AgentFlow-Bot/1.0' },
-    })
-    clearTimeout(timeout)
-
-    if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`
-
-    const contentType = res.headers.get('content-type') || ''
-    const text = await res.text()
-
-    // Strip HTML tags if it looks like HTML
-    let cleaned = text
-    if (contentType.includes('html') || text.trimStart().startsWith('<')) {
-      cleaned = text
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-    }
-
-    if (cleaned.length > MAX_FETCH_SIZE) {
-      return cleaned.slice(0, MAX_FETCH_SIZE) + '\n... (truncated)'
-    }
-    return cleaned
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return 'Error: Request timed out after 10 seconds'
-    }
-    return `Error fetching URL: ${err instanceof Error ? err.message : String(err)}`
-  }
-}
-
-const MAX_TOOL_RESULT = 30_000
-
-function getGitHubToken(): string | undefined {
-  const config = getIntegrationConfig('github')
-  const dbToken = (config?.config as any)?.token
-  return dbToken || process.env.GITHUB_TOKEN
-}
-
-async function executeGitHubSearch(query: string, type: string): Promise<string> {
-  const token = getGitHubToken()
-  if (!token) return 'GitHub token not configured. Set it in the dashboard under Integrations → GitHub, or set the GITHUB_TOKEN environment variable.'
-
-  try {
-    const endpoint = type === 'issues'
-      ? `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=10`
-      : `https://api.github.com/search/code?q=${encodeURIComponent(query)}&per_page=10`
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(endpoint, {
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'AgentFlow-Bot/1.0',
-      },
-    })
-    clearTimeout(timeout)
-
-    if (!res.ok) return `GitHub API error: HTTP ${res.status} ${res.statusText}`
-
-    const data = await res.json() as any
-    if (!data.items || data.items.length === 0) return `No results found for "${query}"`
-
-    if (type === 'issues') {
-      const lines = data.items.map((item: any) =>
-        `- [${item.title}](${item.html_url}) — ${item.repository_url?.split('/').slice(-2).join('/') || ''} #${item.number} (${item.state})`
-      )
-      return `Found ${data.total_count} results:\n${lines.join('\n')}`
-    }
-
-    // Code search
-    const lines = data.items.map((item: any) =>
-      `- ${item.repository.full_name}: \`${item.path}\` — ${item.html_url}`
-    )
-    return `Found ${data.total_count} results:\n${lines.join('\n')}`
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return 'Error: GitHub request timed out after 10 seconds'
-    }
-    return `Error searching GitHub: ${err instanceof Error ? err.message : String(err)}`
-  }
-}
-
-async function executeGitHubReadFile(owner: string, repo: string, path: string, ref?: string): Promise<string> {
-  const token = getGitHubToken()
-  if (!token) return 'GitHub token not configured. Set it in the dashboard under Integrations → GitHub, or set the GITHUB_TOKEN environment variable.'
-
-  try {
-    let url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`
-    if (ref) url += `?ref=${encodeURIComponent(ref)}`
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10_000)
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'AgentFlow-Bot/1.0',
-      },
-    })
-    clearTimeout(timeout)
-
-    if (!res.ok) return `GitHub API error: HTTP ${res.status} ${res.statusText}`
-
-    const data = await res.json() as any
-    if (data.type !== 'file') return `"${path}" is a ${data.type}, not a file`
-    if (!data.content) return `No content found for "${path}"`
-
-    const content = Buffer.from(data.content, 'base64').toString('utf-8')
-    if (content.length > MAX_TOOL_RESULT) {
-      return content.slice(0, MAX_TOOL_RESULT) + '\n... (truncated)'
-    }
-    return content
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return 'Error: GitHub request timed out after 10 seconds'
-    }
-    return `Error reading file: ${err instanceof Error ? err.message : String(err)}`
-  }
-}
 
 export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string }): ChatHandler {
   const { dbPath, sourcesDbPath } = opts
@@ -456,16 +271,10 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
                 result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
               } else if (block.name === 'schema') {
                 result = executeSchemaTools()
-              } else if (block.name === 'web_fetch') {
-                result = await executeWebFetch((block.input as { url: string }).url)
-              } else if (block.name === 'github_search') {
-                const input = block.input as { query: string; type?: string }
-                result = await executeGitHubSearch(input.query, input.type || 'code')
-              } else if (block.name === 'github_read_file') {
-                const input = block.input as { owner: string; repo: string; path: string; ref?: string }
-                result = await executeGitHubReadFile(input.owner, input.repo, input.path, input.ref)
               } else {
-                result = `Unknown tool: ${block.name}`
+                // Delegate to integration tools
+                const integrationResult = await executeIntegrationTool(block.name, block.input as Record<string, unknown>)
+                result = integrationResult ?? `Unknown tool: ${block.name}`
               }
               if (result.length > MAX_TOOL_RESULT) {
                 result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT in your query for smaller results)'
