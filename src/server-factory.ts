@@ -59,8 +59,8 @@ export function createServer(options: ServerOptions = {}) {
   initSourcesDb(sourcesDbPath)
 
   // Initialize vector store for semantic search (async, non-blocking)
-  const zvecDataPath = process.env.ZVEC_DATA_PATH ?? './zvec-data'
-  initVectorStore(zvecDataPath).catch(err => {
+  const vectorsDbPath = process.env.VECTORS_DB ?? 'vectors.db'
+  initVectorStore(vectorsDbPath).catch(err => {
     console.warn('[VectorStore] Failed to initialize (semantic search disabled):', err)
   })
 

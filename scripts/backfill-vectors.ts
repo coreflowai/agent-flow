@@ -7,7 +7,7 @@
  *
  * Env vars:
  *   SOURCES_DB     - path to sources.db (default: ./sources.db)
- *   ZVEC_DATA_PATH - path to zvec data directory (default: ./zvec-data)
+ *   VECTORS_DB     - path to vectors.db (default: ./vectors.db)
  *   VOYAGE_API_KEY - required for embeddings
  */
 import { Database } from 'bun:sqlite'
@@ -23,10 +23,10 @@ async function main() {
   }
 
   const sourcesDbPath = process.env.SOURCES_DB ?? './sources.db'
-  const zvecDataPath = process.env.ZVEC_DATA_PATH ?? './zvec-data'
+  const vectorsDbPath = process.env.VECTORS_DB ?? './vectors.db'
 
   console.log(`[Backfill] Sources DB: ${sourcesDbPath}`)
-  console.log(`[Backfill] Vector store: ${zvecDataPath}`)
+  console.log(`[Backfill] Vectors DB: ${vectorsDbPath}`)
 
   // Open sources.db read-only
   const db = new Database(sourcesDbPath, { readonly: true })
@@ -40,7 +40,7 @@ async function main() {
   }
 
   // Initialize vector store
-  const ok = await initVectorStore(zvecDataPath)
+  const ok = await initVectorStore(vectorsDbPath)
   if (!ok) {
     console.error('[Backfill] Failed to initialize vector store. Aborting.')
     db.close()
