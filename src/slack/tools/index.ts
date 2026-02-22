@@ -4,6 +4,7 @@ import { discordTools } from './discord'
 import { slackApiTools } from './slack-api'
 import { webTools } from './web'
 import { datadogTools } from './datadog'
+import { sandboxTools } from './sandbox'
 import type { ToolModule } from './types'
 
 const modules: ToolModule[] = [
@@ -12,6 +13,7 @@ const modules: ToolModule[] = [
   slackApiTools,
   webTools,
   datadogTools,
+  sandboxTools,
 ]
 
 /** All integration tool definitions (pass to Anthropic API as `tools`). */

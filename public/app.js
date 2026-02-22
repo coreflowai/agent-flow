@@ -21,6 +21,7 @@ const CHUNK_SIZE = 200
 let totalEventCount = 0
 let chunkLoading = false
 let renderPending = false
+let eventIdSet = new Set()  // track seen event IDs for deduplication
 const renderedRows = new Map()  // rowIndex -> DOM element
 const rowPool = []              // recycled elements
 
@@ -278,6 +279,7 @@ function applyFilter() {
     } else {
       currentSessionId = null
       currentEvents = []
+      eventIdSet.clear()
       selectedSessionIdx = -1
       selectedEventIdx = -1
       showEmptyState()
@@ -365,6 +367,7 @@ socket.on('sessions:cleared', () => {
   filteredSessions = []
   currentSessionId = null
   currentEvents = []
+  eventIdSet.clear()
   selectedSessionIdx = -1
   selectedEventIdx = -1
   updateUserFilterDropdown()
@@ -382,6 +385,8 @@ socket.on('session:meta', ({ sessionId, totalEvents }) => {
 
 socket.on('event', (event) => {
   if (event.sessionId !== currentSessionId) return
+  if (event.id && eventIdSet.has(event.id)) return
+  if (event.id) eventIdSet.add(event.id)
   currentEvents.push(event)
   totalEventCount++
   displayRows = groupEvents(currentEvents)
@@ -394,11 +399,20 @@ async function loadInitialChunk() {
     const res = await fetch(`/api/sessions/${currentSessionId}/events?limit=${CHUNK_SIZE}&offset=0`, { credentials: 'include' })
     const data = await res.json()
     if (data.events) {
-      currentEvents = data.events
-      totalEventCount = data.total
+      // Merge: keep any Socket.IO events that arrived during fetch but aren't in the DB response
+      const fetchedIds = new Set(data.events.filter(e => e.id).map(e => e.id))
+      const extraEvents = currentEvents.filter(e => e.id && !fetchedIds.has(e.id))
+      currentEvents = [...data.events, ...extraEvents]
+      eventIdSet = new Set(currentEvents.filter(e => e.id).map(e => e.id))
+      totalEventCount = data.total + extraEvents.length
     }
   } catch {}
   chunkLoading = false
+  // Invalidate all rendered rows since displayRows content changed
+  for (const [ri, el] of renderedRows) {
+    releaseRow(el)
+  }
+  renderedRows.clear()
   displayRows = groupEvents(currentEvents)
   scheduleRender()
 }
@@ -412,11 +426,20 @@ async function loadNextChunk() {
     const res = await fetch(`/api/sessions/${currentSessionId}/events?limit=${CHUNK_SIZE}&offset=${loaded}`, { credentials: 'include' })
     const data = await res.json()
     if (data.events) {
-      currentEvents.push(...data.events)
+      for (const e of data.events) {
+        if (e.id && eventIdSet.has(e.id)) continue
+        if (e.id) eventIdSet.add(e.id)
+        currentEvents.push(e)
+      }
       totalEventCount = data.total
     }
   } catch {}
   chunkLoading = false
+  // Invalidate rendered rows since indices may have shifted
+  for (const [ri, el] of renderedRows) {
+    releaseRow(el)
+  }
+  renderedRows.clear()
   displayRows = groupEvents(currentEvents)
   scheduleRender()
 }
@@ -426,6 +449,7 @@ socket.on('session:deleted', (id) => {
   if (currentSessionId === id) {
     currentSessionId = null
     currentEvents = []
+    eventIdSet.clear()
     displayRows = []
     selectedEventIdx = -1
     showEmptyState()
@@ -672,6 +696,7 @@ function selectSession(sessionId) {
   if (currentSessionId) socket.emit('unsubscribe', currentSessionId)
   currentSessionId = sessionId
   currentEvents = []
+  eventIdSet.clear()
   displayRows = []
   selectedEventIdx = -1
   totalEventCount = 0
@@ -801,28 +826,32 @@ function populateRow(el, row, ri) {
     const time = timeAgo(row.start.timestamp)
     const dur = e.timestamp - row.start.timestamp
     const durStr = dur > 1000 ? (dur / 1000).toFixed(1) + 's' : dur + 'ms'
+    const preview = formatToolPreview(e)
     el.innerHTML = `
       <div class="cell-time">
         <span class="text-[10px] opacity-40">${time}</span>
       </div>
       <div class="cell-content">
-        <div class="flex items-center gap-1.5">
-          <span class="text-warning text-xs font-semibold">${esc(e.toolName || '?')}</span>
-          <span class="text-[10px] opacity-30">${durStr}</span>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="text-warning text-xs font-semibold shrink-0">${esc(e.toolName || '?')}</span>
+          <span class="text-[10px] opacity-30 shrink-0">${durStr}</span>
+          ${preview ? `<span class="text-[10px] opacity-40 truncate">${preview}</span>` : ''}
         </div>
       </div>
     `
   } else if (row.kind === 'tool-pending') {
     const e = row.event
     const time = timeAgo(e.timestamp)
+    const preview = formatToolPreview(e)
     el.innerHTML = `
       <div class="cell-time">
         <span class="text-[10px] opacity-40">${time}</span>
       </div>
       <div class="cell-content">
-        <div class="flex items-center gap-1.5">
-          <span class="text-warning text-xs font-semibold">${esc(e.toolName || '?')}</span>
-          <span class="text-[10px] opacity-30">pending</span>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="text-warning text-xs font-semibold shrink-0">${esc(e.toolName || '?')}</span>
+          <span class="text-[10px] opacity-30 shrink-0">pending</span>
+          ${preview ? `<span class="text-[10px] opacity-40 truncate">${preview}</span>` : ''}
         </div>
       </div>
     `
@@ -906,6 +935,50 @@ function formatPreview(e) {
   if (e.text) parts.push(esc(truncate(e.text, 200)))
   if (e.error) parts.push(esc(truncate(e.error, 200)))
   return parts.join('\n')
+}
+
+function formatToolPreview(e) {
+  const input = e.toolInput
+  if (!input || typeof input !== 'object') return ''
+  const name = (e.toolName || '').toLowerCase()
+  // File operations — show the path (last 2 segments for brevity)
+  const filePath = input.file_path || input.filePath
+  if (filePath && (name === 'read' || name === 'write' || name === 'edit')) {
+    return esc(filePath.split('/').slice(-2).join('/'))
+  }
+  // Bash — prefer description, fall back to command
+  if (name === 'bash') {
+    if (input.description) return esc(truncate(input.description, 120))
+    if (input.command) return esc(truncate(input.command, 80))
+  }
+  // Search tools — show pattern
+  if (name === 'grep' || name === 'glob') {
+    const pat = input.pattern || ''
+    const path = input.path ? ` in ${input.path.split('/').slice(-2).join('/')}` : ''
+    return esc(truncate(pat + path, 120))
+  }
+  // Task agents
+  if (name === 'task') return esc(truncate(input.description || '', 120))
+  if (name === 'taskcreate') return esc(truncate(input.subject || '', 120))
+  if (name === 'taskupdate') {
+    const parts = []
+    if (input.taskId) parts.push(`#${input.taskId}`)
+    if (input.status) parts.push(input.status)
+    return esc(parts.join(' '))
+  }
+  // WebFetch / WebSearch
+  if (name === 'webfetch') return esc(truncate(input.url || '', 120))
+  if (name === 'websearch') return esc(truncate(input.query || '', 120))
+  // EnterPlanMode / ExitPlanMode
+  if (name === 'enterplanmode') return 'entering plan mode'
+  if (name === 'exitplanmode') return 'plan ready'
+  // NotebookEdit
+  if (name === 'notebookedit') return esc(truncate(input.notebook_path?.split('/').slice(-1)[0] || '', 80))
+  // Fallback: show first string value from input
+  for (const v of Object.values(input)) {
+    if (typeof v === 'string' && v.length > 0) return esc(truncate(v, 100))
+  }
+  return ''
 }
 
 // --- Copy conversation ---
@@ -3250,6 +3323,25 @@ let cronJobs = []
 let cronLoaded = false
 let selectedCronId = null
 let schedulePreviewTimer = null
+const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
+// Populate timezone dropdown with all IANA timezones, user's locale pre-selected
+;(function initTimezoneDropdown() {
+  const sel = document.getElementById('cron-timezone')
+  if (!sel) return
+  const zones = typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+       'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Taipei', 'Australia/Sydney']
+  sel.innerHTML = ''
+  for (const tz of zones) {
+    const opt = document.createElement('option')
+    opt.value = tz
+    opt.textContent = tz
+    if (tz === userTimezone) opt.selected = true
+    sel.appendChild(opt)
+  }
+})()
 
 async function loadCronJobs() {
   try {
@@ -3357,7 +3449,7 @@ function showCronForm(job) {
   document.getElementById('cron-form-title').textContent = job ? 'Edit Scheduled Task' : 'New Scheduled Task'
   document.getElementById('cron-name').value = job?.name || ''
   document.getElementById('cron-schedule').value = job?.scheduleText || ''
-  document.getElementById('cron-timezone').value = job?.timezone || 'UTC'
+  document.getElementById('cron-timezone').value = job?.timezone || userTimezone
   document.getElementById('cron-prompt').value = job?.prompt || ''
   document.getElementById('cron-notify-slack').checked = job?.notifySlack || false
   document.getElementById('cron-edit-id').value = job?.id || ''
