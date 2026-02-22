@@ -198,6 +198,18 @@ export function markQuestionAnsweredFromReplies(questionId: string): void {
     .run()
 }
 
+export function updateQuestionMeta(questionId: string, patch: Record<string, unknown>): void {
+  const db = getDb()
+  const row = db.select().from(slackQuestions).where(eq(slackQuestions.id, questionId)).get()
+  if (!row) return
+
+  const meta = (row.meta ?? {}) as Record<string, unknown>
+  db.update(slackQuestions)
+    .set({ meta: { ...meta, ...patch } })
+    .where(eq(slackQuestions.id, questionId))
+    .run()
+}
+
 export function findQuestionByThread(channelId: string, messageTs: string): SlackQuestion | null {
   const db = getDb()
   const row = db.select().from(slackQuestions)

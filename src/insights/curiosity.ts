@@ -3,6 +3,7 @@ import { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
 import { tools, executeSqlTool, executeSchemaTools, executeSemanticSearchTool, buildTeamContext } from './analyzer'
 import { addQuestion, getQuestion, markQuestionAnsweredFromReplies } from '../db/slack'
+import { scoreQuestion, scoreUnansweredQuestions, buildFeedbackSection } from './scoring'
 import { addDataSource, listDataSources, addSourceEntry } from '../db/sources'
 import type { SlackBot } from '../slack'
 import type { DataSource } from '../types'
@@ -51,6 +52,8 @@ export function ensureAgentDataSource(dbPath: string): string {
  * Build the curiosity prompt for the AI.
  */
 function buildCuriosityPrompt(agentDataSourceId: string, teamContext: string): string {
+  const feedbackSection = buildFeedbackSection()
+
   return `You are a curious team assistant embedded in an AI agent observability platform. Your job is to learn about the team's work by asking interesting, specific questions.
 
 ## Your Task
@@ -94,6 +97,7 @@ if something similar was already asked. If it was, pick a different angle.
 
 ${teamContext}
 
+${feedbackSection}
 ## Output Format
 
 Respond with valid JSON:
@@ -261,7 +265,7 @@ export function createCuriosityScheduler(options: CuriositySchedulerOptions): Cu
   const agentDataSourceId = ensureAgentDataSource(dbPath)
 
   // Listen for thread:ready — store answered curiosity questions as source entries
-  internalBus.on('thread:ready', ({ questionId }: { questionId: string }) => {
+  internalBus.on('thread:ready', async ({ questionId }: { questionId: string }) => {
     try {
       markQuestionAnsweredFromReplies(questionId)
       const question = getQuestion(questionId)
@@ -286,6 +290,12 @@ export function createCuriosityScheduler(options: CuriositySchedulerOptions): Cu
           answer: question.answer,
         },
       })
+
+      // Score the question based on engagement
+      const score = await scoreQuestion(questionId)
+      if (score) {
+        console.log(`[Curiosity] Scored question ${questionId}: ${score.value}`)
+      }
 
       console.log(`[Curiosity] Stored Q&A for question ${questionId}`)
     } catch (err) {
@@ -321,6 +331,9 @@ export function createCuriosityScheduler(options: CuriositySchedulerOptions): Cu
 
     isAsking = true
     try {
+      // Score any unanswered questions older than 4h before generating new ones
+      await scoreUnansweredQuestions()
+
       console.log('[Curiosity] Running curiosity prompt...')
       const output = await runCuriosityPrompt({ dbPath, sourcesDbPath, agentDataSourceId })
 
